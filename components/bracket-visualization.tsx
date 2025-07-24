@@ -367,14 +367,14 @@ export function BracketVisualization({
         open={!!selectedMatch}
         onOpenChange={() => setSelectedMatch(null)}
       >
-        <DialogContent className="sm:max-w-lg bg-background border-2 shadow-2xl mx-4">
-          <DialogHeader className="pb-4">
+        <DialogContent className="sm:max-w-lg bg-white dark:bg-slate-900 border-2 border-slate-200 dark:border-slate-700 shadow-2xl mx-4 p-0">
+          <DialogHeader className="pb-4 px-6 pt-6">
             <DialogTitle className="text-2xl font-bold text-center">
               Update Match Result
             </DialogTitle>
           </DialogHeader>
           {selectedMatch && (
-            <div className="space-y-8">
+            <div className="space-y-8 px-6 pb-6">
               {/* Match Info */}
               <div className="text-center p-6 bg-gradient-to-r from-primary/5 to-primary/10 dark:from-primary/10 dark:to-primary/20 rounded-xl border border-primary/20">
                 <p className="text-sm text-muted-foreground font-medium">
@@ -482,8 +482,18 @@ export function BracketVisualization({
                 </p>
               </div>
 
+              {/* Instructions */}
+              {!winnerId && (
+                <div className="text-center p-3 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg">
+                  <p className="text-sm text-blue-700 dark:text-blue-300 font-medium">
+                    💡 Select a winner by clicking the &quot;Select Winner&quot;
+                    button above
+                  </p>
+                </div>
+              )}
+
               {/* Action Buttons */}
-              <div className="flex gap-4 pt-4">
+              <div className="flex gap-4 pt-6">
                 <Button
                   variant="outline"
                   onClick={() => setSelectedMatch(null)}
@@ -494,13 +504,17 @@ export function BracketVisualization({
                 <Button
                   onClick={handleScoreUpdate}
                   disabled={isUpdating || !winnerId}
-                  className="flex-1 h-12 text-base font-medium"
+                  className={`flex-1 h-12 text-base font-medium ${
+                    !winnerId ? "opacity-50 cursor-not-allowed" : ""
+                  }`}
                 >
                   {isUpdating ? (
                     <>
                       <div className="w-5 h-5 mr-2 animate-spin rounded-full border-2 border-current border-t-transparent" />
                       Updating...
                     </>
+                  ) : !winnerId ? (
+                    "Select Winner First"
                   ) : (
                     "Update Match"
                   )}

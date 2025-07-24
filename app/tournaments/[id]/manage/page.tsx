@@ -103,6 +103,52 @@ export default function TournamentManagePage() {
 
     setActionLoading(true);
     try {
+      // Check if we have enough participants
+      if (
+        !tournament.tournament_participants ||
+        tournament.tournament_participants.length < 2
+      ) {
+        setError("Need at least 2 participants to start tournament");
+        return;
+      }
+
+      // Generate bracket first
+      const { generateSingleEliminationBracket } = await import(
+        "@/lib/bracket"
+      );
+
+      // Convert participants to bracket format
+      const bracketParticipants = tournament.tournament_participants.map(
+        (p) => ({
+          id: p.id,
+          tournament_id: p.tournament_id,
+          user_id: p.user_id,
+          seed: p.seed,
+          joined_at: p.joined_at,
+          user: p.user,
+        })
+      );
+
+      // Generate bracket
+      const { matches } = generateSingleEliminationBracket(
+        bracketParticipants,
+        tournament.id
+      );
+
+      // Save matches to database
+      const { error: matchesError } = await supabase
+        .from("matches")
+        .insert(matches);
+
+      if (matchesError) {
+        console.error("Error creating matches:", matchesError);
+        setError(
+          "Failed to create tournament matches: " + matchesError.message
+        );
+        return;
+      }
+
+      // Update tournament status
       const { error } = await supabase
         .from("tournaments")
         .update({ status: "in_progress" })

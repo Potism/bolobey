@@ -1,11 +1,15 @@
 "use client";
 
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useRef } from "react";
 import { useParams } from "next/navigation";
 import Link from "next/link";
 import { useAuth } from "@/lib/hooks/useAuth";
 import { supabase } from "@/lib/supabase";
-import { TournamentWithDetails } from "@/lib/types";
+import {
+  TournamentWithDetails,
+  TournamentParticipant,
+  User,
+} from "@/lib/types";
 import {
   generateSingleEliminationBracket,
   TournamentBracket,
@@ -28,6 +32,9 @@ import {
   Play,
   RotateCcw,
   AlertTriangle,
+  Share2,
+  Copy,
+  Check,
 } from "lucide-react";
 
 interface MatchWithPlayers {
@@ -61,9 +68,14 @@ export default function TournamentBracketPage() {
   const [champion, setChampion] = useState<{ name: string; id: string } | null>(
     null
   );
+  const [copied, setCopied] = useState(false);
+  const [showShareMenu, setShowShareMenu] = useState(false);
+  const shareMenuRef = useRef<HTMLDivElement>(null);
 
   const fetchMatches = useCallback(async () => {
     try {
+      console.log("Fetching matches for tournament:", params.id);
+
       const { data: matches, error: matchesError } = await supabase
         .from("matches")
         .select(
@@ -83,12 +95,18 @@ export default function TournamentBracketPage() {
         return;
       }
 
+      console.log("Fetched matches:", matches);
+
       // Convert matches to bracket format
       if (matches && matches.length > 0) {
         const reconstructedBracket = reconstructBracketFromMatches(
           matches as MatchWithPlayers[]
         );
+        console.log("Reconstructed bracket:", reconstructedBracket);
         setBracket(reconstructedBracket);
+      } else {
+        console.log("No matches found for tournament");
+        setBracket(null);
       }
     } catch (error) {
       console.error("Error fetching matches:", error);
@@ -97,6 +115,8 @@ export default function TournamentBracketPage() {
 
   const fetchTournamentAndBracket = useCallback(async () => {
     try {
+      console.log("Fetching tournament:", params.id);
+
       // Fetch tournament details
       const { data: tournamentData, error: tournamentError } = await supabase
         .from("tournaments")
@@ -118,9 +138,12 @@ export default function TournamentBracketPage() {
         .single();
 
       if (tournamentError) {
+        console.error("Tournament error:", tournamentError);
         setError("Tournament not found");
         return;
       }
+
+      console.log("Tournament data:", tournamentData);
 
       setTournament({
         ...tournamentData,
@@ -129,7 +152,75 @@ export default function TournamentBracketPage() {
 
       // Fetch matches if tournament has started
       if (tournamentData.status !== "open") {
+        console.log("Tournament is not open, fetching matches...");
         await fetchMatches();
+
+        // Check if we need to auto-generate bracket
+        const { data: existingMatches, error: matchesCheckError } =
+          await supabase
+            .from("matches")
+            .select("id")
+            .eq("tournament_id", params.id)
+            .limit(1);
+
+        if (matchesCheckError) {
+          console.error("Error checking existing matches:", matchesCheckError);
+        } else if (!existingMatches || existingMatches.length === 0) {
+          console.log("No matches found, attempting auto-generation...");
+
+          // Auto-generate the bracket
+          try {
+            const { generateSingleEliminationBracket } = await import(
+              "@/lib/bracket"
+            );
+
+            // Convert participants to bracket format
+            const bracketParticipants =
+              tournamentData.tournament_participants.map(
+                (p: TournamentParticipant & { user?: User }) => ({
+                  id: p.id,
+                  tournament_id: p.tournament_id,
+                  user_id: p.user_id,
+                  seed: p.seed,
+                  joined_at: p.joined_at,
+                  user: p.user,
+                })
+              );
+
+            console.log("Bracket participants:", bracketParticipants);
+
+            // Generate bracket
+            const { bracket: newBracket, matches } =
+              generateSingleEliminationBracket(
+                bracketParticipants,
+                tournamentData.id
+              );
+
+            console.log("Generated matches:", matches);
+
+            // Save matches to database
+            const { error: matchesError } = await supabase
+              .from("matches")
+              .insert(matches);
+
+            if (matchesError) {
+              console.error("Error auto-generating matches:", matchesError);
+              setError(
+                "Failed to generate tournament bracket. Please try again."
+              );
+            } else {
+              console.log("Auto-generated bracket successfully");
+              setBracket(newBracket);
+            }
+          } catch (error) {
+            console.error("Error auto-generating bracket:", error);
+            setError(
+              "Failed to generate tournament bracket. Please try again."
+            );
+          }
+        }
+      } else {
+        console.log("Tournament is still open, no matches to fetch");
       }
     } catch (error) {
       console.error("Error fetching tournament:", error);
@@ -421,6 +512,43 @@ export default function TournamentBracketPage() {
     return user && tournament && tournament.created_by === user.id;
   };
 
+  const getShareUrl = () => {
+    if (typeof window !== "undefined") {
+      return window.location.href;
+    }
+    return "";
+  };
+
+  const copyToClipboard = async () => {
+    try {
+      await navigator.clipboard.writeText(getShareUrl());
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    } catch (error) {
+      console.error("Failed to copy:", error);
+    }
+  };
+
+  // Click outside handler for share menu
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (
+        shareMenuRef.current &&
+        !shareMenuRef.current.contains(event.target as Node)
+      ) {
+        setShowShareMenu(false);
+      }
+    };
+
+    if (showShareMenu) {
+      document.addEventListener("mousedown", handleClickOutside);
+    }
+
+    return () => {
+      document.removeEventListener("mousedown", handleClickOutside);
+    };
+  }, [showShareMenu]);
+
   if (loading) {
     return (
       <div className="min-h-screen bg-background">
@@ -494,6 +622,37 @@ export default function TournamentBracketPage() {
                     : "Open"}
                 </Badge>
               </div>
+            </div>
+
+            {/* Share Button */}
+            <div className="relative" ref={shareMenuRef}>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setShowShareMenu(!showShareMenu)}
+                className="relative"
+              >
+                <Share2 className="mr-2 h-4 w-4" />
+                Share Bracket
+              </Button>
+
+              {showShareMenu && (
+                <div className="absolute top-full right-0 mt-2 bg-background border border-border rounded-lg shadow-lg p-2 z-50 min-w-[200px]">
+                  <div className="space-y-1">
+                    <button
+                      onClick={copyToClipboard}
+                      className="w-full flex items-center gap-3 px-3 py-2 text-sm hover:bg-muted rounded-md transition-colors"
+                    >
+                      {copied ? (
+                        <Check className="h-4 w-4 text-green-600" />
+                      ) : (
+                        <Copy className="h-4 w-4" />
+                      )}
+                      {copied ? "Copied!" : "Copy Link"}
+                    </button>
+                  </div>
+                </div>
+              )}
             </div>
           </div>
         </div>

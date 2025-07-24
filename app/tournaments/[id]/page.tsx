@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef } from "react";
 import { useParams } from "next/navigation";
 import Link from "next/link";
 import { useAuth } from "@/lib/hooks/useAuth";
@@ -23,6 +23,12 @@ import {
   Settings,
   UserPlus,
   Play,
+  Share2,
+  Copy,
+  Twitter,
+  Facebook,
+  Linkedin,
+  Check,
 } from "lucide-react";
 
 export default function TournamentDetailsPage() {
@@ -34,12 +40,35 @@ export default function TournamentDetailsPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [joining, setJoining] = useState(false);
+  const [copied, setCopied] = useState(false);
+  const [showShareMenu, setShowShareMenu] = useState(false);
+  const shareMenuRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     if (params.id) {
       fetchTournament();
     }
   }, [params.id]);
+
+  // Click outside handler for share menu
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (
+        shareMenuRef.current &&
+        !shareMenuRef.current.contains(event.target as Node)
+      ) {
+        setShowShareMenu(false);
+      }
+    };
+
+    if (showShareMenu) {
+      document.addEventListener("mousedown", handleClickOutside);
+    }
+
+    return () => {
+      document.removeEventListener("mousedown", handleClickOutside);
+    };
+  }, [showShareMenu]);
 
   const fetchTournament = async () => {
     try {
@@ -160,6 +189,51 @@ export default function TournamentDetailsPage() {
     return user && tournament && tournament.created_by === user.id;
   };
 
+  const getShareUrl = () => {
+    if (typeof window !== "undefined") {
+      return window.location.href;
+    }
+    return "";
+  };
+
+  const copyToClipboard = async () => {
+    try {
+      await navigator.clipboard.writeText(getShareUrl());
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    } catch (error) {
+      console.error("Failed to copy:", error);
+    }
+  };
+
+  const shareToSocial = (platform: string) => {
+    const url = getShareUrl();
+    const text = `${tournament?.name} - Join this exciting Beyblade tournament!`;
+
+    let shareUrl = "";
+    switch (platform) {
+      case "twitter":
+        shareUrl = `https://twitter.com/intent/tweet?text=${encodeURIComponent(
+          text
+        )}&url=${encodeURIComponent(url)}`;
+        break;
+      case "facebook":
+        shareUrl = `https://www.facebook.com/sharer/sharer.php?u=${encodeURIComponent(
+          url
+        )}`;
+        break;
+      case "linkedin":
+        shareUrl = `https://www.linkedin.com/sharing/share-offsite/?url=${encodeURIComponent(
+          url
+        )}`;
+        break;
+      default:
+        return;
+    }
+
+    window.open(shareUrl, "_blank", "width=600,height=400");
+  };
+
   if (loading) {
     return (
       <div className="min-h-screen bg-background">
@@ -227,6 +301,62 @@ export default function TournamentDetailsPage() {
 
             <div className="flex items-center gap-3">
               {getStatusBadge(tournament.status)}
+
+              {/* Share Button */}
+              <div className="relative" ref={shareMenuRef}>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setShowShareMenu(!showShareMenu)}
+                  className="relative"
+                >
+                  <Share2 className="mr-2 h-4 w-4" />
+                  Share
+                </Button>
+
+                {showShareMenu && (
+                  <div className="absolute top-full right-0 mt-2 bg-background border border-border rounded-lg shadow-lg p-2 z-50 min-w-[200px]">
+                    <div className="space-y-1">
+                      <button
+                        onClick={copyToClipboard}
+                        className="w-full flex items-center gap-3 px-3 py-2 text-sm hover:bg-muted rounded-md transition-colors"
+                      >
+                        {copied ? (
+                          <Check className="h-4 w-4 text-green-600" />
+                        ) : (
+                          <Copy className="h-4 w-4" />
+                        )}
+                        {copied ? "Copied!" : "Copy Link"}
+                      </button>
+
+                      <button
+                        onClick={() => shareToSocial("twitter")}
+                        className="w-full flex items-center gap-3 px-3 py-2 text-sm hover:bg-muted rounded-md transition-colors"
+                      >
+                        <Twitter className="h-4 w-4 text-blue-400" />
+                        Share on Twitter
+                      </button>
+
+                      <button
+                        onClick={() => shareToSocial("facebook")}
+                        className="w-full flex items-center gap-3 px-3 py-2 text-sm hover:bg-muted rounded-md transition-colors"
+                      >
+                        <Facebook className="h-4 w-4 text-blue-600" />
+                        Share on Facebook
+                      </button>
+
+                      <button
+                        onClick={() => shareToSocial("linkedin")}
+                        className="w-full flex items-center gap-3 px-3 py-2 text-sm hover:bg-muted rounded-md transition-colors"
+                      >
+                        <Linkedin className="h-4 w-4 text-blue-700" />
+                        Share on LinkedIn
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </div>
+
               {(isCreator() || isAdmin) && (
                 <Button variant="outline" size="sm" asChild>
                   <Link href={`/tournaments/${tournament.id}/manage`}>

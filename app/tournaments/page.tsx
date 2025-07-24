@@ -10,7 +10,16 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
-import { Calendar, Users, Trophy, Plus, Clock, User } from "lucide-react";
+import {
+  Calendar,
+  Users,
+  Trophy,
+  Plus,
+  Clock,
+  User,
+  Copy,
+  Check,
+} from "lucide-react";
 
 export default function TournamentsPage() {
   const { isAdmin } = useAuth();
@@ -19,6 +28,7 @@ export default function TournamentsPage() {
   const [filter, setFilter] = useState<
     "all" | "open" | "in_progress" | "completed"
   >("all");
+  const [copied, setCopied] = useState(false);
 
   useEffect(() => {
     fetchTournaments();
@@ -91,6 +101,16 @@ export default function TournamentsPage() {
     });
   };
 
+  const copyToClipboard = async () => {
+    try {
+      await navigator.clipboard.writeText(window.location.href);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    } catch (error) {
+      console.error("Failed to copy:", error);
+    }
+  };
+
   if (loading) {
     return (
       <div className="min-h-screen bg-background">
@@ -118,14 +138,30 @@ export default function TournamentsPage() {
                 Join the competition and prove your skills
               </p>
             </div>
-            {isAdmin && (
-              <Button asChild>
-                <Link href="/tournaments/create">
-                  <Plus className="mr-2 h-4 w-4" />
-                  Create Tournament
-                </Link>
+            <div className="flex items-center gap-3">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={copyToClipboard}
+                className="flex items-center gap-2"
+              >
+                {copied ? (
+                  <Check className="h-4 w-4 text-green-600" />
+                ) : (
+                  <Copy className="h-4 w-4" />
+                )}
+                {copied ? "Copied!" : "Share"}
               </Button>
-            )}
+
+              {isAdmin && (
+                <Button asChild>
+                  <Link href="/tournaments/create">
+                    <Plus className="mr-2 h-4 w-4" />
+                    Create Tournament
+                  </Link>
+                </Button>
+              )}
+            </div>
           </div>
 
           {/* Filter Tabs */}
