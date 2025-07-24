@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback } from "react";
 import { useParams } from "next/navigation";
 import Link from "next/link";
 import { useAuth } from "@/lib/hooks/useAuth";
@@ -30,6 +30,23 @@ import {
   AlertTriangle,
 } from "lucide-react";
 
+interface MatchWithPlayers {
+  id: string;
+  tournament_id: string;
+  round: number;
+  match_number: number;
+  player1_id: string | null;
+  player2_id: string | null;
+  winner_id: string | null;
+  player1_score: number;
+  player2_score: number;
+  status: string;
+  completed_at: string | null;
+  player1?: { id: string; display_name: string };
+  player2?: { id: string; display_name: string };
+  winner?: { id: string; display_name: string };
+}
+
 export default function TournamentBracketPage() {
   const params = useParams();
   const { user, isAdmin } = useAuth();
@@ -41,13 +58,40 @@ export default function TournamentBracketPage() {
   const [error, setError] = useState("");
   const [generating, setGenerating] = useState(false);
 
-  useEffect(() => {
-    if (params.id) {
-      fetchTournamentAndBracket();
+  const fetchMatches = useCallback(async () => {
+    try {
+      const { data: matches, error: matchesError } = await supabase
+        .from("matches")
+        .select(
+          `
+          *,
+          player1:users!player1_id(id, display_name),
+          player2:users!player2_id(id, display_name),
+          winner:users!winner_id(id, display_name)
+        `
+        )
+        .eq("tournament_id", params.id)
+        .order("round")
+        .order("match_number");
+
+      if (matchesError) {
+        console.error("Error fetching matches:", matchesError);
+        return;
+      }
+
+      // Convert matches to bracket format
+      if (matches && matches.length > 0) {
+        const reconstructedBracket = reconstructBracketFromMatches(
+          matches as MatchWithPlayers[]
+        );
+        setBracket(reconstructedBracket);
+      }
+    } catch (error) {
+      console.error("Error fetching matches:", error);
     }
   }, [params.id]);
 
-  const fetchTournamentAndBracket = async () => {
+  const fetchTournamentAndBracket = useCallback(async () => {
     try {
       // Fetch tournament details
       const { data: tournamentData, error: tournamentError } = await supabase
@@ -81,7 +125,7 @@ export default function TournamentBracketPage() {
 
       // Fetch matches if tournament has started
       if (tournamentData.status !== "open") {
-        await fetchMatches(tournamentData);
+        await fetchMatches();
       }
     } catch (error) {
       console.error("Error fetching tournament:", error);
@@ -89,45 +133,16 @@ export default function TournamentBracketPage() {
     } finally {
       setLoading(false);
     }
-  };
+  }, [params.id, fetchMatches]);
 
-  const fetchMatches = async (tournamentData: any) => {
-    try {
-      const { data: matches, error: matchesError } = await supabase
-        .from("matches")
-        .select(
-          `
-          *,
-          player1:users!player1_id(id, display_name),
-          player2:users!player2_id(id, display_name),
-          winner:users!winner_id(id, display_name)
-        `
-        )
-        .eq("tournament_id", params.id)
-        .order("round")
-        .order("match_number");
-
-      if (matchesError) {
-        console.error("Error fetching matches:", matchesError);
-        return;
-      }
-
-      // Convert matches to bracket format
-      if (matches && matches.length > 0) {
-        const reconstructedBracket = reconstructBracketFromMatches(
-          matches,
-          tournamentData.tournament_participants
-        );
-        setBracket(reconstructedBracket);
-      }
-    } catch (error) {
-      console.error("Error fetching matches:", error);
+  useEffect(() => {
+    if (params.id) {
+      fetchTournamentAndBracket();
     }
-  };
+  }, [fetchTournamentAndBracket]);
 
   const reconstructBracketFromMatches = (
-    matches: any[],
-    participants: any[]
+    matches: MatchWithPlayers[]
   ): TournamentBracket => {
     // Group matches by round
     const roundsMap = new Map();
@@ -160,7 +175,7 @@ export default function TournamentBracketPage() {
           : undefined,
         player1_score: match.player1_score,
         player2_score: match.player2_score,
-        status: match.status,
+        status: match.status as "pending" | "in_progress" | "completed",
         is_bye: !match.player1 || !match.player2,
       });
     });
@@ -172,7 +187,8 @@ export default function TournamentBracketPage() {
         round: roundNumber,
         name: getRoundName(roundNumber, roundsMap.size),
         matches: roundMatches.sort(
-          (a: any, b: any) => a.match_number - b.match_number
+          (a: { match_number: number }, b: { match_number: number }) =>
+            a.match_number - b.match_number
         ),
       }));
 
@@ -318,7 +334,7 @@ export default function TournamentBracketPage() {
             ? {
                 ...prev,
                 status: "completed",
-                winner_id: updatedBracket.champion?.user_id,
+                winner_id: updatedBracket.champion?.user_id || null,
                 winner: updatedBracket.champion?.user,
               }
             : null

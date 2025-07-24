@@ -152,7 +152,7 @@ export default function HomePage() {
           <div className="max-w-3xl mx-auto text-center">
             {/* Main headline */}
             <h1 className="text-6xl md:text-8xl font-bold tracking-tight mb-8 leading-none">
-              <span className="text-foreground">Bolobey</span>
+              <span className="text-foreground">🫦Bolobey💋</span>
             </h1>
 
             {/* Subtitle */}

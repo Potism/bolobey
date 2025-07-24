@@ -1,11 +1,12 @@
 "use client";
 
+import { useState } from "react";
 import Link from "next/link";
 import { useAuth } from "@/lib/hooks/useAuth";
 import { Button } from "@/components/ui/button";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
-import { Swords, Plus, User, LogOut } from "lucide-react";
+import { Swords, Plus, User, LogOut, Menu } from "lucide-react";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -13,12 +14,25 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import {
+  Sheet,
+  SheetContent,
+  SheetHeader,
+  SheetTitle,
+  SheetTrigger,
+} from "@/components/ui/sheet";
 
 export function Navigation() {
   const { user, isAdmin, signOut } = useAuth();
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
   const handleSignOut = async () => {
     await signOut();
+    setMobileMenuOpen(false);
+  };
+
+  const handleMobileLinkClick = () => {
+    setMobileMenuOpen(false);
   };
 
   return (
@@ -38,7 +52,7 @@ export function Navigation() {
             </div>
           </Link>
 
-          {/* Navigation Links */}
+          {/* Desktop Navigation Links */}
           <div className="hidden md:flex items-center space-x-6">
             <Link
               href="/tournaments"
@@ -54,12 +68,12 @@ export function Navigation() {
             </Link>
           </div>
 
-          {/* User Menu */}
-          <div className="flex items-center space-x-4">
+          {/* Desktop User Menu */}
+          <div className="hidden md:flex items-center space-x-4">
             {user ? (
               <div className="flex items-center space-x-3">
                 {isAdmin && (
-                  <Button asChild size="sm" className="hidden sm:flex">
+                  <Button asChild size="sm">
                     <Link href="/tournaments/create">
                       <Plus className="mr-2 h-4 w-4" />
                       Create Tournament
@@ -101,14 +115,6 @@ export function Navigation() {
                         Profile
                       </Link>
                     </DropdownMenuItem>
-                    {isAdmin && (
-                      <DropdownMenuItem asChild className="sm:hidden">
-                        <Link href="/tournaments/create">
-                          <Plus className="mr-2 h-4 w-4" />
-                          Create Tournament
-                        </Link>
-                      </DropdownMenuItem>
-                    )}
                     <DropdownMenuSeparator />
                     <DropdownMenuItem onClick={handleSignOut}>
                       <LogOut className="mr-2 h-4 w-4" />
@@ -127,6 +133,130 @@ export function Navigation() {
                 </Button>
               </div>
             )}
+          </div>
+
+          {/* Mobile Menu Button */}
+          <div className="md:hidden">
+            <Sheet open={mobileMenuOpen} onOpenChange={setMobileMenuOpen}>
+              <SheetTrigger asChild>
+                <Button variant="ghost" size="sm" className="h-10 w-10 p-0">
+                  <Menu className="h-5 w-5" />
+                  <span className="sr-only">Open menu</span>
+                </Button>
+              </SheetTrigger>
+              <SheetContent
+                side="right"
+                className="w-[300px] sm:w-[400px] bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/80 border-l shadow-xl"
+              >
+                <SheetHeader>
+                  <SheetTitle className="text-left">Menu</SheetTitle>
+                </SheetHeader>
+                <div className="mt-6 flex flex-col space-y-4 px-4">
+                  {/* Mobile Navigation Links */}
+                  <div className="flex flex-col space-y-2">
+                    <Link
+                      href="/tournaments"
+                      className="flex items-center px-3 py-3 text-sm font-medium text-foreground/80 transition-colors hover:text-foreground hover:bg-muted/50 rounded-lg"
+                      onClick={handleMobileLinkClick}
+                    >
+                      Tournaments
+                    </Link>
+                    <Link
+                      href="/leaderboard"
+                      className="flex items-center px-3 py-3 text-sm font-medium text-foreground/80 transition-colors hover:text-foreground hover:bg-muted/50 rounded-lg"
+                      onClick={handleMobileLinkClick}
+                    >
+                      Leaderboard
+                    </Link>
+                  </div>
+
+                  {/* Mobile User Section */}
+                  {user ? (
+                    <div className="space-y-4">
+                      <div className="border-t border-border/50 pt-4">
+                        <div className="flex items-center space-x-3 px-3 py-3 bg-muted/30 rounded-lg">
+                          <Avatar className="h-10 w-10">
+                            <AvatarFallback className="text-sm">
+                              {user.display_name?.charAt(0).toUpperCase() ||
+                                "U"}
+                            </AvatarFallback>
+                          </Avatar>
+                          <div className="flex flex-col">
+                            <p className="font-medium">{user.display_name}</p>
+                            <p className="text-sm text-muted-foreground">
+                              {user.email}
+                            </p>
+                            {isAdmin && (
+                              <Badge
+                                variant="secondary"
+                                className="w-fit text-xs mt-1"
+                              >
+                                Admin
+                              </Badge>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className="flex flex-col space-y-2">
+                        {isAdmin && (
+                          <Button
+                            asChild
+                            className="justify-start"
+                            variant="ghost"
+                          >
+                            <Link
+                              href="/tournaments/create"
+                              onClick={handleMobileLinkClick}
+                            >
+                              <Plus className="mr-3 h-4 w-4" />
+                              Create Tournament
+                            </Link>
+                          </Button>
+                        )}
+                        <Button
+                          asChild
+                          className="justify-start"
+                          variant="ghost"
+                        >
+                          <Link href="/profile" onClick={handleMobileLinkClick}>
+                            <User className="mr-3 h-4 w-4" />
+                            Profile
+                          </Link>
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          className="justify-start text-red-600 hover:text-red-700 hover:bg-red-50 dark:hover:bg-red-950/20"
+                          onClick={handleSignOut}
+                        >
+                          <LogOut className="mr-3 h-4 w-4" />
+                          Sign out
+                        </Button>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="border-t pt-4 space-y-3">
+                      <Button asChild className="w-full">
+                        <Link
+                          href="/auth/signup"
+                          onClick={handleMobileLinkClick}
+                        >
+                          Sign Up
+                        </Link>
+                      </Button>
+                      <Button asChild variant="outline" className="w-full">
+                        <Link
+                          href="/auth/login"
+                          onClick={handleMobileLinkClick}
+                        >
+                          Sign In
+                        </Link>
+                      </Button>
+                    </div>
+                  )}
+                </div>
+              </SheetContent>
+            </Sheet>
           </div>
         </div>
       </div>
