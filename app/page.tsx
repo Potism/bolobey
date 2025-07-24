@@ -139,13 +139,13 @@ export default function HomePage() {
       {/* Hero Section */}
       <section className="relative min-h-[90vh] flex items-center justify-center overflow-hidden">
         {/* Subtle background gradient */}
-        <div className="absolute inset-0 bg-gradient-to-br from-background via-background to-muted/20"></div>
+        <div className="absolute inset-0 bg-gradient-to-br from-background via-background to-muted/20 dark:to-muted/10"></div>
 
         {/* Floating elements for visual interest */}
         <div className="absolute inset-0 overflow-hidden">
-          <div className="absolute top-1/4 left-1/4 w-64 h-64 bg-primary/5 rounded-full blur-3xl"></div>
-          <div className="absolute bottom-1/4 right-1/4 w-96 h-96 bg-blue-500/5 rounded-full blur-3xl"></div>
-          <div className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 w-80 h-80 bg-purple-500/5 rounded-full blur-3xl"></div>
+          <div className="absolute top-1/4 left-1/4 w-64 h-64 bg-primary/5 dark:bg-primary/10 rounded-full blur-3xl"></div>
+          <div className="absolute bottom-1/4 right-1/4 w-96 h-96 bg-blue-500/5 dark:bg-blue-500/10 rounded-full blur-3xl"></div>
+          <div className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 w-80 h-80 bg-purple-500/5 dark:bg-purple-500/10 rounded-full blur-3xl"></div>
         </div>
 
         <div className="container mx-auto px-4 relative z-10">
@@ -220,7 +220,7 @@ export default function HomePage() {
       </section>
 
       {/* Features */}
-      <section className="py-32">
+      <section className="py-32 bg-muted/5 dark:bg-muted/10">
         <div className="container mx-auto px-4">
           <div className="text-center mb-20">
             <h2 className="text-4xl md:text-5xl font-bold tracking-tight mb-6">
@@ -235,7 +235,7 @@ export default function HomePage() {
 
           <div className="grid grid-cols-1 md:grid-cols-3 gap-12">
             <div className="text-center group">
-              <div className="w-16 h-16 mx-auto bg-gradient-to-br from-orange-500/10 to-red-500/10 rounded-2xl flex items-center justify-center mb-6 group-hover:scale-110 transition-transform duration-300">
+              <div className="w-16 h-16 mx-auto bg-gradient-to-br from-orange-500/10 to-red-500/10 dark:from-orange-500/20 dark:to-red-500/20 rounded-2xl flex items-center justify-center mb-6 group-hover:scale-110 transition-transform duration-300">
                 <Zap className="h-8 w-8 text-orange-600 dark:text-orange-400" />
               </div>
               <h3 className="text-2xl font-semibold mb-4">Smart Brackets</h3>
@@ -247,7 +247,7 @@ export default function HomePage() {
             </div>
 
             <div className="text-center group">
-              <div className="w-16 h-16 mx-auto bg-gradient-to-br from-green-500/10 to-emerald-500/10 rounded-2xl flex items-center justify-center mb-6 group-hover:scale-110 transition-transform duration-300">
+              <div className="w-16 h-16 mx-auto bg-gradient-to-br from-green-500/10 to-emerald-500/10 dark:from-green-500/20 dark:to-emerald-500/20 rounded-2xl flex items-center justify-center mb-6 group-hover:scale-110 transition-transform duration-300">
                 <Users className="h-8 w-8 text-green-600 dark:text-green-400" />
               </div>
               <h3 className="text-2xl font-semibold mb-4">Player Analytics</h3>
@@ -258,7 +258,7 @@ export default function HomePage() {
             </div>
 
             <div className="text-center group">
-              <div className="w-16 h-16 mx-auto bg-gradient-to-br from-blue-500/10 to-purple-500/10 rounded-2xl flex items-center justify-center mb-6 group-hover:scale-110 transition-transform duration-300">
+              <div className="w-16 h-16 mx-auto bg-gradient-to-br from-blue-500/10 to-purple-500/10 dark:from-blue-500/20 dark:to-purple-500/20 rounded-2xl flex items-center justify-center mb-6 group-hover:scale-110 transition-transform duration-300">
                 <Trophy className="h-8 w-8 text-blue-600 dark:text-blue-400" />
               </div>
               <h3 className="text-2xl font-semibold mb-4">
@@ -275,7 +275,7 @@ export default function HomePage() {
 
       {/* Featured Tournaments */}
       {featuredTournaments.length > 0 && (
-        <section className="py-32 bg-muted/20">
+        <section className="py-32 bg-muted/20 dark:bg-muted/10">
           <div className="container mx-auto px-4">
             <div className="text-center mb-16">
               <h2 className="text-4xl md:text-5xl font-bold tracking-tight mb-6">
@@ -291,7 +291,7 @@ export default function HomePage() {
               {featuredTournaments.map((tournament) => (
                 <div key={tournament.id} className="group cursor-pointer">
                   <Link href={`/tournaments/${tournament.id}`}>
-                    <div className="bg-background rounded-2xl p-8 border border-border/50 hover:border-border hover:shadow-lg transition-all duration-300 group-hover:scale-[1.02]">
+                    <div className="bg-background rounded-2xl p-8 border border-border/50 hover:border-border hover:shadow-lg dark:hover:shadow-xl dark:hover:shadow-black/10 transition-all duration-300 group-hover:scale-[1.02]">
                       <div className="flex justify-between items-start mb-6">
                         <h3 className="text-xl font-semibold group-hover:text-primary transition-colors">
                           {tournament.name}
@@ -446,7 +446,7 @@ export default function HomePage() {
 
       {/* Setup Guide */}
       {!process.env.NEXT_PUBLIC_SUPABASE_URL && (
-        <section className="py-32 bg-muted/20">
+        <section className="py-32 bg-muted/20 dark:bg-muted/10">
           <div className="container mx-auto px-4 text-center">
             <div className="max-w-3xl mx-auto">
               <h2 className="text-4xl md:text-5xl font-bold tracking-tight mb-6">
@@ -474,7 +474,7 @@ export default function HomePage() {
 
       {/* CTA Section */}
       {!user && process.env.NEXT_PUBLIC_SUPABASE_URL && (
-        <section className="py-32 bg-gradient-to-br from-primary/5 to-primary/10">
+        <section className="py-32 bg-gradient-to-br from-primary/5 to-primary/10 dark:from-primary/10 dark:to-primary/20">
           <div className="container mx-auto px-4 text-center">
             <div className="max-w-3xl mx-auto">
               <h2 className="text-4xl md:text-5xl font-bold tracking-tight mb-6">

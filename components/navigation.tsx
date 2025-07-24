@@ -3,6 +3,7 @@
 import { useState } from "react";
 import Link from "next/link";
 import { useAuth } from "@/lib/hooks/useAuth";
+import { ThemeToggle } from "@/components/theme-toggle";
 import { Button } from "@/components/ui/button";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
@@ -70,6 +71,7 @@ export function Navigation() {
 
           {/* Desktop User Menu */}
           <div className="hidden md:flex items-center space-x-4">
+            <ThemeToggle />
             {user ? (
               <div className="flex items-center space-x-3">
                 {isAdmin && (
@@ -152,6 +154,10 @@ export function Navigation() {
                   <SheetTitle className="text-left">Menu</SheetTitle>
                 </SheetHeader>
                 <div className="mt-6 flex flex-col space-y-4 px-4">
+                  {/* Theme Toggle */}
+                  <div className="flex justify-center pb-4 border-b border-border/50">
+                    <ThemeToggle />
+                  </div>
                   {/* Mobile Navigation Links */}
                   <div className="flex flex-col space-y-2">
                     <Link
