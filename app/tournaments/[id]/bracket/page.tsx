@@ -57,6 +57,10 @@ export default function TournamentBracketPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [generating, setGenerating] = useState(false);
+  const [tournamentCompleted, setTournamentCompleted] = useState(false);
+  const [champion, setChampion] = useState<{ name: string; id: string } | null>(
+    null
+  );
 
   const fetchMatches = useCallback(async () => {
     try {
@@ -321,7 +325,7 @@ export default function TournamentBracketPage() {
       // Check if tournament is complete
       if (updatedBracket.champion) {
         // Update tournament status and winner
-        await supabase
+        const { error: tournamentError } = await supabase
           .from("tournaments")
           .update({
             status: "completed",
@@ -329,6 +333,12 @@ export default function TournamentBracketPage() {
           })
           .eq("id", params.id);
 
+        if (tournamentError) {
+          console.error("Error updating tournament:", tournamentError);
+          throw tournamentError;
+        }
+
+        // Update tournament state
         setTournament((prev) =>
           prev
             ? {
@@ -339,6 +349,37 @@ export default function TournamentBracketPage() {
               }
             : null
         );
+
+        // Set tournament completion state
+        setTournamentCompleted(true);
+        setChampion({
+          name: updatedBracket.champion.user?.display_name || "Unknown",
+          id: updatedBracket.champion.user_id,
+        });
+
+        // Show success message for tournament completion
+        console.log(
+          `Tournament completed! Champion: ${updatedBracket.champion.user?.display_name}`
+        );
+
+        // Debug: Check if tournament was properly updated
+        const { data: updatedTournament, error: checkError } = await supabase
+          .from("tournaments")
+          .select("id, name, status, winner_id")
+          .eq("id", params.id)
+          .single();
+
+        if (checkError) {
+          console.error("Error checking tournament update:", checkError);
+        } else {
+          console.log("Tournament update check:", updatedTournament);
+        }
+
+        // Auto-hide the completion message after 5 seconds
+        setTimeout(() => {
+          setTournamentCompleted(false);
+          setChampion(null);
+        }, 5000);
       }
 
       // Create next round matches if needed
@@ -510,6 +551,18 @@ export default function TournamentBracketPage() {
               </CardContent>
             </Card>
           </div>
+        )}
+
+        {/* Success Alert - Tournament Completed */}
+        {tournamentCompleted && champion && (
+          <Alert className="mb-6 bg-gradient-to-r from-green-50 to-emerald-50 dark:from-green-900/20 dark:to-emerald-900/20 border-green-300 dark:border-green-600">
+            <Trophy className="h-4 w-4 text-green-600 dark:text-green-400" />
+            <AlertDescription className="text-green-800 dark:text-green-200">
+              <span className="font-bold">Tournament Complete! 🏆</span>{" "}
+              <span className="font-semibold">{champion.name}</span> is the new
+              champion! Their stats have been updated in the leaderboard.
+            </AlertDescription>
+          </Alert>
         )}
 
         {/* Error Alert */}

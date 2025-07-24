@@ -24,6 +24,7 @@ import {
   Users,
   Target,
   Crown,
+  RefreshCw,
 } from "lucide-react";
 import Link from "next/link";
 
@@ -36,6 +37,7 @@ export default function LeaderboardPage() {
     "tournaments_won" | "win_percentage" | "total_matches"
   >("tournaments_won");
   const [sortOrder, setSortOrder] = useState<"asc" | "desc">("desc");
+  const [usingDemoData, setUsingDemoData] = useState(false);
 
   useEffect(() => {
     fetchLeaderboardData();
@@ -48,15 +50,28 @@ export default function LeaderboardPage() {
   const fetchLeaderboardData = async () => {
     try {
       // Check if Supabase is configured
-      if (
-        !process.env.NEXT_PUBLIC_SUPABASE_URL ||
-        !process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
-      ) {
+      const hasSupabaseUrl = !!process.env.NEXT_PUBLIC_SUPABASE_URL;
+      const hasSupabaseKey = !!process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+
+      console.log(
+        "Supabase URL:",
+        hasSupabaseUrl ? "Configured" : "NOT CONFIGURED"
+      );
+      console.log(
+        "Supabase Key:",
+        hasSupabaseKey ? "Configured" : "NOT CONFIGURED"
+      );
+
+      if (!hasSupabaseUrl || !hasSupabaseKey) {
         console.log("Supabase not configured, using demo data");
+        setUsingDemoData(true);
         setDemoData();
         setLoading(false);
         return;
       }
+
+      // Debug: Check raw data first
+      console.log("Fetching leaderboard data...");
 
       const { data, error } = await supabase
         .from("player_stats")
@@ -64,11 +79,62 @@ export default function LeaderboardPage() {
         .order("tournaments_won", { ascending: false })
         .order("win_percentage", { ascending: false });
 
-      if (error) throw error;
+      if (error) {
+        console.error("Error fetching player_stats:", error);
+        throw error;
+      }
 
+      console.log("Player stats data:", data);
       setPlayers(data || []);
+
+      // Debug: Also check tournaments and matches
+      const { data: tournaments, error: tournamentsError } = await supabase
+        .from("tournaments")
+        .select("id, name, status, winner_id")
+        .eq("status", "completed");
+
+      if (tournamentsError) {
+        console.error("Error fetching tournaments:", tournamentsError);
+      } else {
+        console.log("Completed tournaments:", tournaments);
+      }
+
+      const { data: matches, error: matchesError } = await supabase
+        .from("matches")
+        .select("id, tournament_id, player1_id, player2_id, winner_id, status")
+        .eq("status", "completed");
+
+      if (matchesError) {
+        console.error("Error fetching matches:", matchesError);
+      } else {
+        console.log("Completed matches:", matches);
+      }
+
+      // Debug: Check user roles
+      const { data: users, error: usersError } = await supabase
+        .from("users")
+        .select("id, display_name, role")
+        .in("role", ["player", "admin"]);
+
+      if (usersError) {
+        console.error("Error fetching users:", usersError);
+      } else {
+        console.log("Users with roles:", users);
+      }
+
+      // Debug: Check tournament participants
+      const { data: participants, error: participantsError } = await supabase
+        .from("tournament_participants")
+        .select("tournament_id, user_id");
+
+      if (participantsError) {
+        console.error("Error fetching participants:", participantsError);
+      } else {
+        console.log("Tournament participants:", participants);
+      }
     } catch (error) {
       console.error("Error fetching leaderboard data:", error);
+      setUsingDemoData(true);
       setDemoData();
     } finally {
       setLoading(false);
@@ -346,6 +412,19 @@ export default function LeaderboardPage() {
                 }`}
               />
             </Button>
+
+            <Button
+              variant="outline"
+              size="icon"
+              onClick={() => {
+                setLoading(true);
+                fetchLeaderboardData();
+              }}
+              className="w-10"
+              title="Refresh leaderboard"
+            >
+              <RefreshCw className="h-4 w-4" />
+            </Button>
           </div>
         </div>
 
@@ -439,8 +518,8 @@ export default function LeaderboardPage() {
           </div>
         )}
 
-        {/* Demo Mode Notice */}
-        {!process.env.NEXT_PUBLIC_SUPABASE_URL && (
+        {/* Data Source Notice */}
+        {usingDemoData && (
           <div className="mt-8 bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800 rounded-lg p-4">
             <p className="text-sm text-yellow-800 dark:text-yellow-200 text-center">
               <strong>Demo Mode:</strong> Showing sample leaderboard data. Set

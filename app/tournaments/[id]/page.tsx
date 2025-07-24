@@ -228,9 +228,11 @@ export default function TournamentDetailsPage() {
             <div className="flex items-center gap-3">
               {getStatusBadge(tournament.status)}
               {(isCreator() || isAdmin) && (
-                <Button variant="outline" size="sm">
-                  <Settings className="mr-2 h-4 w-4" />
-                  Manage
+                <Button variant="outline" size="sm" asChild>
+                  <Link href={`/tournaments/${tournament.id}/manage`}>
+                    <Settings className="mr-2 h-4 w-4" />
+                    Manage
+                  </Link>
                 </Button>
               )}
             </div>

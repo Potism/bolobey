@@ -10,7 +10,14 @@ import { Button } from "@/components/ui/button";
 
 import { Badge } from "@/components/ui/badge";
 
-import { Trophy, Zap, Users, Calendar, ArrowRight, Medal } from "lucide-react";
+import {
+  Trophy,
+  Zap,
+  Users,
+  Calendar,
+  ArrowRight,
+  TrendingUp,
+} from "lucide-react";
 
 export default function HomePage() {
   const { user, loading: authLoading } = useAuth();
@@ -375,74 +382,142 @@ export default function HomePage() {
         </section>
       )}
 
-      {/* Top Players */}
-      {topPlayers.length > 0 && (
-        <section className="py-32">
-          <div className="container mx-auto px-4">
-            <div className="text-center mb-16">
-              <h2 className="text-4xl md:text-5xl font-bold tracking-tight mb-6">
-                Champions
-              </h2>
-              <p className="text-xl text-muted-foreground max-w-2xl mx-auto">
-                Meet the top performers in the Beyblade community
-              </p>
-            </div>
+      {/* Champions Section */}
+      <section className="py-32 bg-gradient-to-br from-yellow-50/50 to-amber-50/50 dark:from-yellow-900/10 dark:to-amber-900/10">
+        <div className="container mx-auto px-4">
+          <div className="text-center mb-16">
+            <h2 className="text-4xl md:text-5xl font-bold tracking-tight mb-6">
+              🏆 Champions
+            </h2>
+            <p className="text-xl text-muted-foreground max-w-2xl mx-auto">
+              Recent tournament winners and top performers in the Beyblade
+              community
+            </p>
+          </div>
 
-            <div className="max-w-4xl mx-auto">
-              <div className="bg-background rounded-2xl border border-border/50 overflow-hidden">
-                {topPlayers.map((player, index) => (
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 max-w-6xl mx-auto">
+            {/* Recent Tournament Winners */}
+            <div className="bg-background rounded-2xl border border-border/50 p-8 shadow-lg">
+              <div className="flex items-center gap-3 mb-6">
+                <div className="w-10 h-10 bg-gradient-to-br from-yellow-400 to-yellow-600 rounded-full flex items-center justify-center">
+                  <Trophy className="h-5 w-5 text-white" />
+                </div>
+                <h3 className="text-2xl font-bold">Recent Winners</h3>
+              </div>
+
+              {topPlayers
+                .filter((p) => p.tournaments_won > 0)
+                .slice(0, 5)
+                .map((player, index) => (
                   <div
                     key={player.id}
-                    className="group hover:bg-muted/30 transition-colors"
+                    className="flex items-center justify-between py-4 border-b border-border/30 last:border-b-0"
                   >
-                    <div className="flex items-center justify-between p-8">
-                      <div className="flex items-center gap-6">
-                        <div
-                          className={`w-12 h-12 rounded-full flex items-center justify-center font-bold text-sm transition-transform group-hover:scale-110 ${
-                            index === 0
-                              ? "bg-gradient-to-br from-yellow-400 to-yellow-600 text-yellow-50 shadow-lg"
-                              : index === 1
-                              ? "bg-gradient-to-br from-gray-400 to-gray-600 text-gray-50 shadow-lg"
-                              : index === 2
-                              ? "bg-gradient-to-br from-amber-500 to-amber-700 text-amber-50 shadow-lg"
-                              : "bg-muted text-muted-foreground"
-                          }`}
-                        >
-                          {index < 3 ? (
-                            <Medal className="h-5 w-5" />
-                          ) : (
-                            <span className="text-lg">{index + 1}</span>
-                          )}
-                        </div>
-                        <div>
-                          <h3 className="text-lg font-semibold group-hover:text-primary transition-colors">
-                            {player.display_name}
-                          </h3>
-                          <p className="text-muted-foreground">
-                            {player.total_matches} matches •{" "}
-                            {player.tournaments_won} tournaments won
-                          </p>
-                        </div>
+                    <div className="flex items-center gap-4">
+                      <div
+                        className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-bold ${
+                          index === 0
+                            ? "bg-yellow-100 text-yellow-800 dark:bg-yellow-900/30 dark:text-yellow-200"
+                            : index === 1
+                            ? "bg-gray-100 text-gray-800 dark:bg-gray-900/30 dark:text-gray-200"
+                            : index === 2
+                            ? "bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-200"
+                            : "bg-muted text-muted-foreground"
+                        }`}
+                      >
+                        {index + 1}
                       </div>
-                      <div className="text-right">
-                        <div className="text-2xl font-bold text-primary">
-                          {player.win_percentage}%
-                        </div>
+                      <div>
+                        <h4 className="font-semibold">{player.display_name}</h4>
                         <p className="text-sm text-muted-foreground">
-                          Win Rate
+                          {player.tournaments_won} tournament
+                          {player.tournaments_won !== 1 ? "s" : ""} won
                         </p>
                       </div>
                     </div>
-                    {index < topPlayers.length - 1 && (
-                      <div className="h-px bg-border/50 mx-8"></div>
-                    )}
+                    <div className="text-right">
+                      <div className="text-lg font-bold text-primary">
+                        {player.win_percentage}%
+                      </div>
+                      <div className="text-xs text-muted-foreground">
+                        Win Rate
+                      </div>
+                    </div>
                   </div>
                 ))}
+
+              {topPlayers.filter((p) => p.tournaments_won > 0).length === 0 && (
+                <div className="text-center py-8 text-muted-foreground">
+                  <Trophy className="h-12 w-12 mx-auto mb-4 opacity-50" />
+                  <p>No tournament winners yet</p>
+                  <p className="text-sm">Be the first to win a tournament!</p>
+                </div>
+              )}
+            </div>
+
+            {/* Top Performers */}
+            <div className="bg-background rounded-2xl border border-border/50 p-8 shadow-lg">
+              <div className="flex items-center gap-3 mb-6">
+                <div className="w-10 h-10 bg-gradient-to-br from-blue-500 to-purple-600 rounded-full flex items-center justify-center">
+                  <TrendingUp className="h-5 w-5 text-white" />
+                </div>
+                <h3 className="text-2xl font-bold">Top Performers</h3>
               </div>
+
+              {topPlayers.slice(0, 5).map((player, index) => (
+                <div
+                  key={player.id}
+                  className="flex items-center justify-between py-4 border-b border-border/30 last:border-b-0"
+                >
+                  <div className="flex items-center gap-4">
+                    <div
+                      className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-bold ${
+                        index === 0
+                          ? "bg-yellow-100 text-yellow-800 dark:bg-yellow-900/30 dark:text-yellow-200"
+                          : index === 1
+                          ? "bg-gray-100 text-gray-800 dark:bg-gray-900/30 dark:text-gray-200"
+                          : index === 2
+                          ? "bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-200"
+                          : "bg-muted text-muted-foreground"
+                      }`}
+                    >
+                      {index + 1}
+                    </div>
+                    <div>
+                      <h4 className="font-semibold">{player.display_name}</h4>
+                      <p className="text-sm text-muted-foreground">
+                        {player.total_matches} matches played
+                      </p>
+                    </div>
+                  </div>
+                  <div className="text-right">
+                    <div className="text-lg font-bold text-primary">
+                      {player.win_percentage}%
+                    </div>
+                    <div className="text-xs text-muted-foreground">
+                      Win Rate
+                    </div>
+                  </div>
+                </div>
+              ))}
             </div>
           </div>
-        </section>
-      )}
+
+          <div className="text-center mt-12">
+            <Button
+              variant="outline"
+              size="lg"
+              asChild
+              className="rounded-full px-8"
+            >
+              <Link href="/leaderboard">
+                View Full Leaderboard
+                <ArrowRight className="ml-2 h-4 w-4" />
+              </Link>
+            </Button>
+          </div>
+        </div>
+      </section>
 
       {/* Setup Guide */}
       {!process.env.NEXT_PUBLIC_SUPABASE_URL && (
