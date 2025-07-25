@@ -9,7 +9,6 @@ import { TournamentWithDetails } from "@/lib/types";
 import { Navigation } from "@/components/navigation";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import {
@@ -32,6 +31,7 @@ import {
   Calendar,
   Clock,
 } from "lucide-react";
+import { ThemeToggle } from "@/components/theme-toggle";
 
 export default function TournamentManagePage() {
   const params = useParams();
@@ -293,30 +293,21 @@ export default function TournamentManagePage() {
       <Navigation />
 
       <div className="container mx-auto px-4 py-8">
-        {/* Header */}
-        <div className="mb-8">
-          <Link
-            href={`/tournaments/${tournament.id}`}
-            className="inline-flex items-center gap-2 text-muted-foreground hover:text-foreground transition-colors mb-6"
-          >
-            <ArrowLeft className="h-4 w-4" />
-            Back to Tournament
-          </Link>
-
-          <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
-            <div>
-              <h1 className="text-4xl font-bold tracking-tight mb-2">
-                Manage Tournament
-              </h1>
-              <p className="text-muted-foreground">
-                {tournament.name} - Tournament Management
-              </p>
-            </div>
-
-            <div className="flex items-center gap-3">
-              <Badge variant="outline">{tournament.status}</Badge>
-            </div>
+        {/* Page Header with Theme Toggle */}
+        <div className="flex items-center justify-between mb-8">
+          <div className="flex items-center gap-2">
+            <Link
+              href="/tournaments"
+              className="text-muted-foreground hover:text-foreground flex items-center gap-2"
+            >
+              <ArrowLeft className="h-4 w-4" />
+              Back to Tournaments
+            </Link>
+            <span className="text-lg font-semibold text-foreground ml-4">
+              Manage Tournament
+            </span>
           </div>
+          <ThemeToggle />
         </div>
 
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
@@ -398,11 +389,13 @@ export default function TournamentManagePage() {
               <Separator />
 
               <div className="space-y-3">
-                <div className="flex items-center gap-3 p-4 bg-red-50 dark:bg-red-900/20 rounded-lg">
-                  <Trash2 className="h-5 w-5 text-red-600 dark:text-red-400" />
+                <div className="flex items-center gap-3 p-4 bg-destructive/10 dark:bg-destructive/20 rounded-lg">
+                  <Trash2 className="h-5 w-5 text-destructive" />
                   <div className="flex-1">
-                    <h4 className="font-medium">Delete Tournament</h4>
-                    <p className="text-sm text-muted-foreground">
+                    <h4 className="font-medium text-destructive">
+                      Delete Tournament
+                    </h4>
+                    <p className="text-sm text-destructive-foreground">
                       Permanently delete this tournament
                     </p>
                   </div>
@@ -411,15 +404,21 @@ export default function TournamentManagePage() {
                     onOpenChange={setShowDeleteDialog}
                   >
                     <DialogTrigger asChild>
-                      <Button variant="destructive" disabled={actionLoading}>
+                      <Button
+                        variant="destructive"
+                        className="text-white"
+                        disabled={actionLoading}
+                      >
                         <Trash2 className="mr-2 h-4 w-4" />
                         Delete
                       </Button>
                     </DialogTrigger>
-                    <DialogContent>
+                    <DialogContent className="bg-card text-card-foreground border-destructive">
                       <DialogHeader>
-                        <DialogTitle>Delete Tournament</DialogTitle>
-                        <DialogDescription>
+                        <DialogTitle className="text-destructive">
+                          Delete Tournament
+                        </DialogTitle>
+                        <DialogDescription className="text-destructive-foreground">
                           Are you sure you want to delete this tournament? This
                           action cannot be undone and will remove all tournament
                           data.
@@ -434,6 +433,7 @@ export default function TournamentManagePage() {
                         </Button>
                         <Button
                           variant="destructive"
+                          className="text-white"
                           onClick={handleDeleteTournament}
                           disabled={actionLoading}
                         >

@@ -275,13 +275,15 @@ export default function CreateTournamentPage() {
 
                 {/* Format Description */}
                 {selectedFormat && (
-                  <div className="p-4 bg-slate-50 dark:bg-slate-800 rounded-lg">
+                  <div className="p-4 bg-muted rounded-lg">
                     <div className="flex items-center gap-2 mb-2">
                       {(() => {
                         const Icon = selectedFormat.icon;
-                        return <Icon className="h-5 w-5" />;
+                        return (
+                          <Icon className="h-5 w-5 text-accent-foreground" />
+                        );
                       })()}
-                      <span className="font-semibold">
+                      <span className="font-semibold text-foreground">
                         {selectedFormat.label}
                       </span>
                     </div>
@@ -291,21 +293,21 @@ export default function CreateTournamentPage() {
 
                     {/* Beyblade X specific info */}
                     {formData.format === "beyblade_x" && (
-                      <div className="mt-3 p-3 bg-blue-50 dark:bg-blue-900/20 rounded border border-blue-200 dark:border-blue-800">
-                        <h4 className="font-semibold text-sm mb-2">
+                      <div className="mt-3 p-3 bg-accent/10 rounded border border-accent">
+                        <h4 className="font-semibold text-sm mb-2 text-accent-foreground">
                           Beyblade X Scoring System
                         </h4>
                         <div className="grid grid-cols-3 gap-2 text-xs">
                           <div className="flex items-center gap-1">
-                            <Zap className="h-3 w-3 text-yellow-600" />
+                            <Zap className="h-3 w-3 text-accent-foreground" />
                             <span>Burst: 3pts</span>
                           </div>
                           <div className="flex items-center gap-1">
-                            <Target className="h-3 w-3 text-blue-600" />
+                            <Target className="h-3 w-3 text-accent-foreground" />
                             <span>Ring-Out: 2pts</span>
                           </div>
                           <div className="flex items-center gap-1">
-                            <TrendingUp className="h-3 w-3 text-green-600" />
+                            <TrendingUp className="h-3 w-3 text-accent-foreground" />
                             <span>Spin-Out: 1pt</span>
                           </div>
                         </div>

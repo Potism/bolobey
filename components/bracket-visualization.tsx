@@ -121,10 +121,10 @@ export function BracketVisualization({
           relative w-80 h-40 rounded-lg border-2 transition-all duration-200 cursor-pointer
           ${
             isCompleted
-              ? "bg-green-50 dark:bg-green-900/20 border-green-300 dark:border-green-600 shadow-sm"
+              ? "bg-success/10 text-success-foreground border-success shadow-sm"
               : isReady
-              ? "bg-white dark:bg-slate-800 border-slate-300 dark:border-slate-600 hover:border-slate-400 dark:hover:border-slate-500 hover:shadow-md"
-              : "bg-slate-50 dark:bg-slate-800/50 border-slate-200 dark:border-slate-700"
+              ? "bg-background text-foreground border-border hover:border-primary hover:shadow-md"
+              : "bg-muted text-muted-foreground border-border"
           }
         `}
         onClick={() => handleMatchClick(match)}
@@ -137,8 +137,8 @@ export function BracketVisualization({
               text-xs font-bold px-2 py-1 rounded-full
               ${
                 isCompleted
-                  ? "bg-green-200 dark:bg-green-800 text-green-800 dark:text-green-200"
-                  : "bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-300"
+                  ? "bg-success/20 text-success-foreground"
+                  : "bg-muted text-muted-foreground"
               }
             `}
           >
@@ -158,10 +158,10 @@ export function BracketVisualization({
               text-xs font-bold px-2 py-1 rounded-full
               ${
                 isCompleted
-                  ? "bg-green-600 text-white"
+                  ? "bg-success text-white"
                   : isReady
-                  ? "bg-slate-600 text-white"
-                  : "bg-slate-400 text-white"
+                  ? "bg-muted text-muted-foreground"
+                  : "bg-muted text-muted-foreground"
               }
             `}
           >
@@ -175,7 +175,7 @@ export function BracketVisualization({
             <Button
               size="sm"
               variant="outline"
-              className="w-8 h-8 p-0 rounded-full bg-white/80 dark:bg-slate-800/80 border-2 hover:bg-white dark:hover:bg-slate-800"
+              className="w-8 h-8 p-0 rounded-full bg-background/80 border-2 hover:bg-background dark:hover:bg-slate-800"
             >
               <Edit className="w-4 h-4" />
             </Button>
@@ -201,7 +201,7 @@ export function BracketVisualization({
         {/* Winner Indicator */}
         {isCompleted && match.winner && (
           <div className="absolute -bottom-2 left-1/2 transform -translate-x-1/2">
-            <div className="bg-green-600 text-white px-3 py-1 rounded-full text-xs font-bold flex items-center gap-1">
+            <div className="bg-success text-white px-3 py-1 rounded-full text-xs font-bold flex items-center gap-1">
               <Crown className="w-3 h-3" />
               {match.winner.display_name}
             </div>
@@ -228,13 +228,13 @@ export function BracketVisualization({
     const getBracketColor = (type: string) => {
       switch (type) {
         case "upper":
-          return "border-slate-300 dark:border-slate-600 bg-slate-50 dark:bg-slate-800/50";
+          return "border-border bg-muted";
         case "lower":
-          return "border-slate-300 dark:border-slate-600 bg-slate-50 dark:bg-slate-800/50";
+          return "border-border bg-muted";
         case "final":
-          return "border-slate-400 dark:border-slate-500 bg-slate-100 dark:bg-slate-700/50";
+          return "border-border bg-muted";
         default:
-          return "border-slate-300 dark:border-slate-600 bg-slate-50 dark:bg-slate-800/50";
+          return "border-border bg-muted";
       }
     };
 
@@ -245,9 +245,7 @@ export function BracketVisualization({
             bracketType
           )}`}
         >
-          <h3 className="text-xl font-bold text-slate-800 dark:text-slate-200">
-            {title}
-          </h3>
+          <h3 className="text-xl font-bold text-foreground">{title}</h3>
         </div>
 
         <div className="relative">
@@ -297,8 +295,8 @@ export function BracketVisualization({
           <div className="flex gap-16 relative" style={{ zIndex: 2 }}>
             {Array.from(rounds.entries()).map(([round, roundMatches]) => (
               <div key={round} className="space-y-6">
-                <div className="text-center p-2 bg-slate-100 dark:bg-slate-800 rounded-lg border border-slate-200 dark:border-slate-700">
-                  <h4 className="font-bold text-sm text-slate-700 dark:text-slate-300">
+                <div className="text-center p-2 bg-muted rounded-lg border border-border">
+                  <h4 className="font-bold text-sm text-muted-foreground">
                     Round {round}
                   </h4>
                 </div>
@@ -365,7 +363,7 @@ export function BracketVisualization({
         open={!!selectedMatch}
         onOpenChange={() => setSelectedMatch(null)}
       >
-        <DialogContent className="max-w-[95vw] sm:max-w-2xl md:max-w-3xl lg:max-w-4xl max-h-[90vh] overflow-y-auto bg-white dark:bg-slate-900 border-2 border-slate-200 dark:border-slate-700 shadow-2xl mx-2 sm:mx-4 p-0">
+        <DialogContent className="max-w-[95vw] sm:max-w-2xl md:max-w-3xl lg:max-w-4xl max-h-[90vh] overflow-y-auto bg-background border-2 border-border shadow-2xl mx-2 sm:mx-4 p-0">
           <DialogHeader className="pb-4 px-4 sm:px-6 pt-4 sm:pt-6">
             <DialogTitle className="text-xl sm:text-2xl font-bold text-center">
               Update Match Result - Beyblade X
@@ -374,15 +372,15 @@ export function BracketVisualization({
           {selectedMatch && (
             <div className="space-y-6 sm:space-y-8 px-4 sm:px-6 pb-4 sm:pb-6">
               {/* Match Info */}
-              <div className="text-center p-4 sm:p-6 bg-slate-50 dark:bg-slate-800 rounded-lg border border-slate-200 dark:border-slate-700">
-                <p className="text-xs sm:text-sm text-slate-600 dark:text-slate-400 font-medium">
+              <div className="text-center p-4 sm:p-6 bg-muted rounded-lg border border-border">
+                <p className="text-xs sm:text-sm text-muted-foreground font-medium">
                   {selectedMatch.bracket_type === "upper"
                     ? "Upper Bracket"
                     : selectedMatch.bracket_type === "lower"
                     ? "Lower Bracket"
                     : "Grand Final"}
                 </p>
-                <p className="text-base sm:text-lg font-bold text-slate-800 dark:text-slate-200">
+                <p className="text-base sm:text-lg font-bold text-foreground">
                   Round {selectedMatch.round} - Match{" "}
                   {selectedMatch.match_number}
                 </p>
@@ -478,9 +476,11 @@ export function BracketVisualization({
                 </h4>
 
                 {/* Current Battle Input */}
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 p-3 sm:p-4 bg-slate-50 dark:bg-slate-800 rounded-lg">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 p-3 sm:p-4 bg-muted rounded-lg">
                   <div className="space-y-2">
-                    <Label className="text-sm font-medium">Battle Winner</Label>
+                    <Label className="text-sm font-medium text-muted-foreground">
+                      Battle Winner
+                    </Label>
                     <div className="flex flex-col sm:flex-row gap-2">
                       <Button
                         size="sm"
@@ -524,7 +524,9 @@ export function BracketVisualization({
                   </div>
 
                   <div className="space-y-2">
-                    <Label className="text-sm font-medium">Finish Type</Label>
+                    <Label className="text-sm font-medium text-muted-foreground">
+                      Finish Type
+                    </Label>
                     <div className="flex flex-col sm:flex-row gap-1">
                       <Button
                         size="sm"
@@ -587,7 +589,7 @@ export function BracketVisualization({
                 {/* Battle Points */}
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <div className="space-y-2">
-                    <Label className="text-sm font-medium">
+                    <Label className="text-sm font-medium text-muted-foreground">
                       <span className="truncate">
                         {selectedMatch.player1?.display_name}
                       </span>{" "}
@@ -595,7 +597,9 @@ export function BracketVisualization({
                     </Label>
                     <div className="grid grid-cols-3 gap-1 sm:gap-2">
                       <div>
-                        <Label className="text-xs">Bursts (3pts)</Label>
+                        <Label className="text-xs text-muted-foreground">
+                          Bursts (3pts)
+                        </Label>
                         <Input
                           type="number"
                           min="0"
@@ -610,7 +614,9 @@ export function BracketVisualization({
                         />
                       </div>
                       <div>
-                        <Label className="text-xs">Ring-Outs (2pts)</Label>
+                        <Label className="text-xs text-muted-foreground">
+                          Ring-Outs (2pts)
+                        </Label>
                         <Input
                           type="number"
                           min="0"
@@ -625,7 +631,9 @@ export function BracketVisualization({
                         />
                       </div>
                       <div>
-                        <Label className="text-xs">Spin-Outs (1pt)</Label>
+                        <Label className="text-xs text-muted-foreground">
+                          Spin-Outs (1pt)
+                        </Label>
                         <Input
                           type="number"
                           min="0"
@@ -643,7 +651,7 @@ export function BracketVisualization({
                   </div>
 
                   <div className="space-y-2">
-                    <Label className="text-sm font-medium">
+                    <Label className="text-sm font-medium text-muted-foreground">
                       <span className="truncate">
                         {selectedMatch.player2?.display_name}
                       </span>{" "}
@@ -651,7 +659,9 @@ export function BracketVisualization({
                     </Label>
                     <div className="grid grid-cols-3 gap-1 sm:gap-2">
                       <div>
-                        <Label className="text-xs">Bursts (3pts)</Label>
+                        <Label className="text-xs text-muted-foreground">
+                          Bursts (3pts)
+                        </Label>
                         <Input
                           type="number"
                           min="0"
@@ -666,7 +676,9 @@ export function BracketVisualization({
                         />
                       </div>
                       <div>
-                        <Label className="text-xs">Ring-Outs (2pts)</Label>
+                        <Label className="text-xs text-muted-foreground">
+                          Ring-Outs (2pts)
+                        </Label>
                         <Input
                           type="number"
                           min="0"
@@ -681,7 +693,9 @@ export function BracketVisualization({
                         />
                       </div>
                       <div>
-                        <Label className="text-xs">Spin-Outs (1pt)</Label>
+                        <Label className="text-xs text-muted-foreground">
+                          Spin-Outs (1pt)
+                        </Label>
                         <Input
                           type="number"
                           min="0"
@@ -712,12 +726,14 @@ export function BracketVisualization({
                 {/* Battle List */}
                 {battles.length > 0 && (
                   <div className="space-y-2">
-                    <Label className="text-sm font-medium">Battles Added</Label>
+                    <Label className="text-sm font-medium text-muted-foreground">
+                      Battles Added
+                    </Label>
                     <div className="space-y-2 max-h-32 overflow-y-auto">
                       {battles.map((battle, index) => (
                         <div
                           key={index}
-                          className="flex flex-col sm:flex-row items-start sm:items-center justify-between p-2 bg-slate-100 dark:bg-slate-700 rounded gap-2"
+                          className="flex flex-col sm:flex-row items-start sm:items-center justify-between p-2 bg-muted rounded gap-2"
                         >
                           <span className="text-xs sm:text-sm flex-1">
                             Battle {index + 1}:{" "}
@@ -805,18 +821,14 @@ function PlayerSlot({
 }) {
   if (!player) {
     return (
-      <div className="flex items-center justify-between p-3 rounded-lg bg-slate-100/50 dark:bg-slate-800/30 border border-slate-200/50 dark:border-slate-700/50">
+      <div className="flex items-center justify-between p-3 rounded-lg bg-muted/30 border border-border/50">
         <div className="flex items-center gap-3">
-          <div className="w-8 h-8 rounded-full bg-slate-200 dark:bg-slate-700 flex items-center justify-center">
-            <User className="h-4 w-4 text-slate-500 dark:text-slate-400" />
+          <div className="w-8 h-8 rounded-full bg-muted flex items-center justify-center">
+            <User className="h-4 w-4 text-muted-foreground" />
           </div>
-          <span className="text-sm text-slate-600 dark:text-slate-400 font-medium">
-            TBD
-          </span>
+          <span className="text-sm text-muted-foreground font-medium">TBD</span>
         </div>
-        <span className="text-sm text-slate-500 dark:text-slate-400 font-mono">
-          -
-        </span>
+        <span className="text-sm text-muted-foreground font-mono">-</span>
       </div>
     );
   }
@@ -827,8 +839,8 @@ function PlayerSlot({
       flex items-center justify-between p-3 rounded-lg transition-all duration-200 border
       ${
         isWinner && isCompleted
-          ? "bg-gradient-to-r from-amber-100 to-yellow-100 dark:from-amber-900/30 dark:to-yellow-900/30 border-amber-300 dark:border-amber-600 font-semibold shadow-sm"
-          : "bg-white/80 dark:bg-slate-800/40 border-slate-200/60 dark:border-slate-600/60 hover:bg-white dark:hover:bg-slate-800/60"
+          ? "bg-accent/10 border-accent font-semibold shadow-sm text-accent-foreground"
+          : "bg-background border-border hover:bg-muted text-foreground"
       }
     `}
     >
@@ -838,15 +850,15 @@ function PlayerSlot({
           w-8 h-8 rounded-full flex items-center justify-center transition-all duration-200 flex-shrink-0
           ${
             isWinner && isCompleted
-              ? "bg-gradient-to-br from-amber-200 to-yellow-200 dark:from-amber-800/50 dark:to-yellow-800/50"
-              : "bg-gradient-to-br from-blue-100 to-indigo-100 dark:from-blue-800/40 dark:to-indigo-800/40"
+              ? "bg-accent/20 border-accent"
+              : "bg-blue-100 dark:bg-blue-800/40 border-blue-100 dark:border-blue-800"
           }
         `}
         >
           <User
             className={`h-4 w-4 transition-colors duration-200 ${
               isWinner && isCompleted
-                ? "text-amber-700 dark:text-amber-300"
+                ? "text-accent-foreground"
                 : "text-blue-600 dark:text-blue-300"
             }`}
           />
@@ -854,8 +866,8 @@ function PlayerSlot({
         <span
           className={`text-sm truncate font-medium transition-colors duration-200 ${
             isWinner && isCompleted
-              ? "text-amber-800 dark:text-amber-200"
-              : "text-slate-700 dark:text-slate-300"
+              ? "text-foreground"
+              : "text-muted-foreground"
           }`}
         >
           {player.display_name}
@@ -863,9 +875,7 @@ function PlayerSlot({
       </div>
       <span
         className={`text-sm font-mono font-bold transition-colors duration-200 flex-shrink-0 ${
-          isWinner && isCompleted
-            ? "text-amber-800 dark:text-amber-200"
-            : "text-slate-600 dark:text-slate-400"
+          isWinner && isCompleted ? "text-foreground" : "text-muted-foreground"
         }`}
       >
         {score}

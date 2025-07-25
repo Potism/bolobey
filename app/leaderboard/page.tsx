@@ -234,11 +234,11 @@ export default function LeaderboardPage() {
   const getRankIcon = (index: number) => {
     switch (index) {
       case 0:
-        return <Crown className="h-6 w-6 text-yellow-500" />;
+        return <Crown className="h-6 w-6 text-primary" />;
       case 1:
-        return <Medal className="h-6 w-6 text-gray-400" />;
+        return <Medal className="h-6 w-6 text-accent-foreground/80" />;
       case 2:
-        return <Medal className="h-6 w-6 text-amber-600" />;
+        return <Medal className="h-6 w-6 text-accent-foreground/60" />;
       default:
         return (
           <span className="text-lg font-bold text-muted-foreground">
@@ -252,21 +252,17 @@ export default function LeaderboardPage() {
     switch (index) {
       case 0:
         return (
-          <Badge className="bg-gradient-to-r from-yellow-400 to-yellow-600 text-yellow-50">
+          <Badge className="bg-accent text-accent-foreground">
             🥇 Champion
           </Badge>
         );
       case 1:
         return (
-          <Badge className="bg-gradient-to-r from-gray-400 to-gray-600 text-gray-50">
-            🥈 Elite
-          </Badge>
+          <Badge className="bg-muted text-muted-foreground">🥈 Elite</Badge>
         );
       case 2:
         return (
-          <Badge className="bg-gradient-to-r from-amber-500 to-amber-700 text-amber-50">
-            🥉 Veteran
-          </Badge>
+          <Badge className="bg-muted text-muted-foreground">🥉 Veteran</Badge>
         );
       case 3:
       case 4:

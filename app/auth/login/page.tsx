@@ -47,8 +47,8 @@ export default function LoginPage() {
             Back to Home
           </Link>
           <div className="flex justify-center mb-6">
-            <div className="flex h-12 w-12 items-center justify-center rounded-xl gradient-beyblade">
-              <Swords className="h-7 w-7 text-white" />
+            <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-accent">
+              <Swords className="h-7 w-7 text-accent-foreground" />
             </div>
           </div>
           <h1 className="text-2xl font-bold tracking-tight">Welcome back</h1>

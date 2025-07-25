@@ -32,14 +32,18 @@ export default function RootLayout({
           dangerouslySetInnerHTML={{
             __html: `
               try {
-                const theme = localStorage.getItem('bolobey-theme') || 'system';
+                const theme = localStorage.getItem('bolobey-theme') || 'dark';
                 const root = document.documentElement;
                 if (theme === 'dark' || (theme === 'system' && window.matchMedia('(prefers-color-scheme: dark)').matches)) {
                   root.classList.add('dark');
                 } else {
                   root.classList.remove('dark');
                 }
-              } catch (e) {}
+              } catch (e) {
+                // Fallback to dark mode if localStorage fails
+                const root = document.documentElement;
+                root.classList.add('dark');
+              }
             `,
           }}
         />

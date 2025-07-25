@@ -356,20 +356,22 @@ export function BattleScoringModal({
           )}
 
           {/* Instructions */}
-          <Card className="bg-blue-50 dark:bg-blue-900/20 border-blue-200 dark:border-blue-800">
+          <Card className="bg-accent/10 border-accent">
             <CardContent className="p-4 sm:p-6">
-              <h4 className="font-semibold mb-2">Beyblade X Scoring System</h4>
+              <h4 className="font-semibold mb-2 text-accent-foreground">
+                Beyblade X Scoring System
+              </h4>
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-xs sm:text-sm">
                 <div className="flex items-center gap-2">
-                  <Zap className="h-4 w-4 text-yellow-600" />
+                  <Zap className="h-4 w-4 text-accent-foreground" />
                   <span>Burst: 3 points</span>
                 </div>
                 <div className="flex items-center gap-2">
-                  <Target className="h-4 w-4 text-blue-600" />
+                  <Target className="h-4 w-4 text-accent-foreground" />
                   <span>Ring-Out: 2 points</span>
                 </div>
                 <div className="flex items-center gap-2">
-                  <TrendingUp className="h-4 w-4 text-green-600" />
+                  <TrendingUp className="h-4 w-4 text-accent-foreground" />
                   <span>Spin-Out: 1 point</span>
                 </div>
               </div>

@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/button";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Swords, Plus, User, LogOut, Menu } from "lucide-react";
+import { motion } from "framer-motion";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -42,9 +43,13 @@ export function Navigation() {
         <div className="flex h-16 items-center justify-between">
           {/* Logo */}
           <Link href="/" className="flex items-center space-x-2">
-            <div className="flex h-10 w-10 items-center justify-center rounded-lg gradient-beyblade">
+            <motion.div
+              className="flex h-10 w-10 items-center justify-center rounded-lg gradient-beyblade"
+              whileHover={{ scale: 1.05, rotate: 5 }}
+              transition={{ duration: 0.3 }}
+            >
               <Swords className="h-6 w-6 text-white" />
-            </div>
+            </motion.div>
             <div className="flex flex-col">
               <span className="text-lg font-bold tracking-tight">Bolobey</span>
               <span className="text-xs text-muted-foreground">
@@ -55,18 +60,22 @@ export function Navigation() {
 
           {/* Desktop Navigation Links */}
           <div className="hidden md:flex items-center space-x-6">
-            <Link
-              href="/tournaments"
-              className="text-sm font-medium text-foreground/60 transition-colors hover:text-foreground"
-            >
-              Tournaments
-            </Link>
-            <Link
-              href="/leaderboard"
-              className="text-sm font-medium text-foreground/60 transition-colors hover:text-foreground"
-            >
-              Leaderboard
-            </Link>
+            <motion.div whileHover={{ y: -2 }} transition={{ duration: 0.2 }}>
+              <Link
+                href="/tournaments"
+                className="text-sm font-medium text-foreground/60 transition-colors hover:text-foreground"
+              >
+                Tournaments
+              </Link>
+            </motion.div>
+            <motion.div whileHover={{ y: -2 }} transition={{ duration: 0.2 }}>
+              <Link
+                href="/leaderboard"
+                className="text-sm font-medium text-foreground/60 transition-colors hover:text-foreground"
+              >
+                Leaderboard
+              </Link>
+            </motion.div>
           </div>
 
           {/* Desktop User Menu */}

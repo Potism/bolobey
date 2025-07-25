@@ -28,57 +28,58 @@
 
 :root {
   --radius: 0.75rem;
-  --background: 0 0% 100%;
-  --foreground: 240 10% 3.9%;
-  --card: 0 0% 100%;
-  --card-foreground: 240 10% 3.9%;
-  --popover: 0 0% 100%;
-  --popover-foreground: 240 10% 3.9%;
-  --primary: 240 5.9% 10%;
-  --primary-foreground: 0 0% 98%;
-  --secondary: 240 4.8% 95.9%;
-  --secondary-foreground: 240 5.9% 10%;
-  --muted: 240 4.8% 95.9%;
-  --muted-foreground: 240 3.8% 46.1%;
-  --accent: 240 4.8% 95.9%;
-  --accent-foreground: 240 5.9% 10%;
-  --destructive: 0 84.2% 60.2%;
-  --destructive-foreground: 0 0% 98%;
-  --border: 240 5.9% 90%;
-  --input: 240 5.9% 90%;
-  --ring: 240 5.9% 10%;
-  --chart-1: 12 76% 61%;
-  --chart-2: 173 58% 39%;
-  --chart-3: 197 37% 24%;
-  --chart-4: 43 74% 66%;
-  --chart-5: 27 87% 67%;
+  --background: hsl(0 0% 100%); /* white */
+  --foreground: hsl(240 10% 3.9%); /* almost black */
+  --card: hsl(0 0% 100%);
+  --card-foreground: hsl(240 10% 3.9%);
+  --popover: hsl(0 0% 100%);
+  --popover-foreground: hsl(240 10% 3.9%);
+  --primary: hsl(240 5.9% 10%);
+  --primary-foreground: hsl(0 0% 98%);
+  --secondary: hsl(240 4.8% 95.9%);
+  --secondary-foreground: hsl(240 5.9% 10%);
+  --muted: hsl(240 4.8% 95.9%);
+  --muted-foreground: hsl(240 3.8% 46.1%);
+  --accent: hsl(262 83% 58%); /* purple accent */
+  --accent-foreground: hsl(0 0% 100%);
+  --destructive: hsl(0 84.2% 60.2%);
+  --destructive-foreground: hsl(0 0% 98%);
+  --border: hsl(240 5.9% 90%);
+  --input: hsl(240 5.9% 90%);
+  --ring: hsl(240 5.9% 10%);
+  --chart-1: hsl(12 76% 61%);
+  --chart-2: hsl(173 58% 39%);
+  --chart-3: hsl(197 37% 24%);
+  --chart-4: hsl(43 74% 66%);
+  --chart-5: hsl(27 87% 67%);
 }
 
 .dark {
-  --background: 240 10% 3.9%;
-  --foreground: 0 0% 98%;
-  --card: 240 10% 3.9%;
-  --card-foreground: 0 0% 98%;
-  --popover: 240 10% 3.9%;
-  --popover-foreground: 0 0% 98%;
-  --primary: 0 0% 98%;
-  --primary-foreground: 240 5.9% 10%;
-  --secondary: 240 3.7% 15.9%;
-  --secondary-foreground: 0 0% 98%;
-  --muted: 240 3.7% 15.9%;
-  --muted-foreground: 240 5% 64.9%;
-  --accent: 240 3.7% 15.9%;
-  --accent-foreground: 0 0% 98%;
-  --destructive: 0 62.8% 30.6%;
-  --destructive-foreground: 0 0% 98%;
-  --border: 240 3.7% 15.9%;
-  --input: 240 3.7% 15.9%;
-  --ring: 240 4.9% 83.9%;
-  --chart-1: 12 76% 61%;
-  --chart-2: 173 58% 39%;
-  --chart-3: 197 37% 24%;
-  --chart-4: 43 74% 66%;
-  --chart-5: 27 87% 67%;
+  /* Sophisticated dark theme inspired by the image */
+  --background: hsl(240 10% 3.9%); /* Very dark gray, almost black */
+  --foreground: hsl(0 0% 98%); /* Almost white */
+  --card: hsl(240 10% 5%); /* Slightly lighter than background */
+  --card-foreground: hsl(0 0% 98%);
+  --popover: hsl(240 10% 5%);
+  --popover-foreground: hsl(0 0% 98%);
+  --primary: hsl(240 5.9% 10%); /* Dark gray for buttons - shadcn style */
+  --primary-foreground: hsl(0 0% 98%);
+  --secondary: hsl(240 5.9% 15%); /* Slightly lighter gray */
+  --secondary-foreground: hsl(0 0% 98%);
+  --muted: hsl(240 5.9% 15%);
+  --muted-foreground: hsl(240 5% 64.9%); /* Medium gray for muted text */
+  --accent: hsl(262 83% 58%); /* Purple accent for highlights */
+  --accent-foreground: hsl(0 0% 100%);
+  --destructive: hsl(0 62.8% 30.6%);
+  --destructive-foreground: hsl(0 0% 98%);
+  --border: hsl(240 5.9% 20%); /* Subtle borders */
+  --input: hsl(240 5.9% 20%);
+  --ring: hsl(262 83% 58%); /* Purple ring for focus states */
+  --chart-1: hsl(12 76% 61%);
+  --chart-2: hsl(173 58% 39%);
+  --chart-3: hsl(197 37% 24%);
+  --chart-4: hsl(43 74% 66%);
+  --chart-5: hsl(27 87% 67%);
 }
 
 @layer base {
@@ -117,6 +118,34 @@
   ::-webkit-scrollbar-thumb:hover {
     @apply bg-border/80;
   }
+
+  /* Dark mode specific styles */
+  .dark {
+    /* Subtle grid pattern background */
+    background-image: linear-gradient(
+        rgba(255, 255, 255, 0.02) 1px,
+        transparent 1px
+      ),
+      linear-gradient(90deg, rgba(255, 255, 255, 0.02) 1px, transparent 1px);
+    background-size: 20px 20px;
+  }
+
+  /* Gradient overlays for depth */
+  .dark::before {
+    content: "";
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: radial-gradient(
+      circle at 50% 50%,
+      rgba(139, 92, 246, 0.03) 0%,
+      transparent 50%
+    );
+    pointer-events: none;
+    z-index: -1;
+  }
 }
 
 @layer components {
@@ -127,6 +156,11 @@
 
   .glass-dark {
     @apply bg-zinc-900/70 backdrop-blur-xl border border-zinc-800/50 shadow-2xl;
+  }
+
+  /* Enhanced dark mode glass effect */
+  .dark .glass-dark {
+    @apply bg-zinc-900/40 backdrop-blur-xl border border-zinc-800/30 shadow-2xl;
   }
 
   /* Gradient backgrounds */
@@ -140,5 +174,92 @@
 
   .gradient-beyblade {
     background: linear-gradient(135deg, #4f46e5 0%, #7c3aed 50%, #db2777 100%);
+  }
+
+  /* Dark mode specific gradients */
+  .dark .gradient-beyblade {
+    background: linear-gradient(135deg, #8b5cf6 0%, #a855f7 50%, #ec4899 100%);
+  }
+
+  /* Card enhancements for dark mode */
+  .dark .card {
+    @apply bg-card/50 backdrop-blur-sm border-border/50;
+  }
+
+  /* Button enhancements for dark mode */
+  .dark .btn-primary {
+    @apply bg-primary text-primary-foreground hover:bg-primary/90;
+  }
+
+  .dark .btn-secondary {
+    @apply bg-secondary text-secondary-foreground hover:bg-secondary/80;
+  }
+
+  .dark .btn-accent {
+    @apply bg-accent text-accent-foreground hover:bg-accent/90;
+  }
+
+  /* Animation utilities */
+  .animate-float {
+    animation: float 6s ease-in-out infinite;
+  }
+
+  .animate-pulse-slow {
+    animation: pulse 3s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+  }
+
+  .animate-bounce-slow {
+    animation: bounce 2s infinite;
+  }
+
+  /* Custom keyframes */
+  @keyframes float {
+    0%,
+    100% {
+      transform: translateY(0px);
+    }
+    50% {
+      transform: translateY(-20px);
+    }
+  }
+
+  /* Smooth scrolling */
+  html {
+    scroll-behavior: smooth;
+  }
+
+  /* Enhanced focus states */
+  .focus-ring {
+    @apply focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 focus:ring-offset-background;
+  }
+
+  /* Hover effects */
+  .hover-lift {
+    @apply transition-all duration-300 ease-out;
+  }
+
+  .hover-lift:hover {
+    @apply transform -translate-y-1 shadow-lg;
+  }
+
+  /* Loading animations */
+  .animate-shimmer {
+    background: linear-gradient(
+      90deg,
+      transparent,
+      rgba(255, 255, 255, 0.1),
+      transparent
+    );
+    background-size: 200% 100%;
+    animation: shimmer 2s infinite;
+  }
+
+  @keyframes shimmer {
+    0% {
+      background-position: -200% 0;
+    }
+    100% {
+      background-position: 200% 0;
+    }
   }
 }
