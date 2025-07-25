@@ -46,6 +46,36 @@ export function PWAInstaller() {
 
     window.addEventListener("beforeinstallprompt", handleBeforeInstallPrompt);
 
+    // Mobile-specific PWA detection
+    const isMobile =
+      /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(
+        navigator.userAgent
+      );
+    const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent);
+    const isAndroid = /Android/.test(navigator.userAgent);
+
+    // Show install prompt for mobile devices even without beforeinstallprompt
+    if (isMobile && !isInstalled) {
+      // Delay showing the prompt to allow page to load
+      const timer = setTimeout(() => {
+        // For iOS, show custom instructions
+        if (isIOS) {
+          setShowInstallPrompt(true);
+        }
+        // For Android, wait for beforeinstallprompt or show after delay
+        else if (isAndroid) {
+          // If no beforeinstallprompt after 3 seconds, show custom prompt
+          setTimeout(() => {
+            if (!deferredPrompt) {
+              setShowInstallPrompt(true);
+            }
+          }, 3000);
+        }
+      }, 2000);
+
+      return () => clearTimeout(timer);
+    }
+
     // Register service worker
     if ("serviceWorker" in navigator) {
       navigator.serviceWorker
@@ -66,23 +96,42 @@ export function PWAInstaller() {
         handleBeforeInstallPrompt
       );
     };
-  }, []);
+  }, [isInstalled, deferredPrompt]);
 
   const handleInstallClick = async () => {
-    if (!deferredPrompt) return;
+    const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent);
+    const isAndroid = /Android/.test(navigator.userAgent);
 
-    deferredPrompt.prompt();
-    const { outcome } = await deferredPrompt.userChoice;
-
-    if (outcome === "accepted") {
-      console.log("User accepted the install prompt");
-      setIsInstalled(true);
-    } else {
-      console.log("User dismissed the install prompt");
+    // For iOS, show instructions
+    if (isIOS) {
+      alert(
+        "To install Bolobey:\n1. Tap the Share button (square with arrow)\n2. Scroll down and tap 'Add to Home Screen'\n3. Tap 'Add' to install"
+      );
+      setShowInstallPrompt(false);
+      return;
     }
 
-    setDeferredPrompt(null);
-    setShowInstallPrompt(false);
+    // For Android with beforeinstallprompt
+    if (deferredPrompt) {
+      deferredPrompt.prompt();
+      const { outcome } = await deferredPrompt.userChoice;
+
+      if (outcome === "accepted") {
+        console.log("User accepted the install prompt");
+        setIsInstalled(true);
+      } else {
+        console.log("User dismissed the install prompt");
+      }
+
+      setDeferredPrompt(null);
+      setShowInstallPrompt(false);
+    } else {
+      // For Android without beforeinstallprompt, show instructions
+      alert(
+        "To install Bolobey:\n1. Tap the menu (three dots)\n2. Tap 'Add to Home screen' or 'Install app'\n3. Tap 'Add' to install"
+      );
+      setShowInstallPrompt(false);
+    }
   };
 
   const handleDismiss = () => {
@@ -152,11 +201,22 @@ export function PWAInstaller() {
             </div>
 
             <div className="flex gap-2">
-              <Button onClick={handleInstallClick} className="flex-1" size="sm">
+              <Button
+                onClick={handleInstallClick}
+                className="flex-1 bg-primary hover:bg-primary/90 text-primary-foreground"
+                size="sm"
+              >
                 <Download className="mr-2 h-4 w-4" />
-                Install App
+                {/iPad|iPhone|iPod|Android/.test(navigator.userAgent)
+                  ? "Install to Home Screen"
+                  : "Install App"}
               </Button>
-              <Button variant="outline" onClick={handleDismiss} size="sm">
+              <Button
+                variant="outline"
+                onClick={handleDismiss}
+                size="sm"
+                className="border-border hover:bg-accent hover:text-accent-foreground"
+              >
                 Later
               </Button>
             </div>
