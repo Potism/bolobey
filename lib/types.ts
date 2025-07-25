@@ -100,6 +100,17 @@ export interface BattleResult {
   player2_points: number;
 }
 
+export interface ChatMessage {
+  id: string;
+  tournament_id: string;
+  user_id: string;
+  message: string;
+  message_type: "message" | "system" | "match_update";
+  created_at: string;
+  updated_at: string;
+  user?: User;
+}
+
 export interface BracketMatch {
   id: string;
   round: number;

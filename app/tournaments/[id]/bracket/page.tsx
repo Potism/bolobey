@@ -122,6 +122,27 @@ export default function TournamentBracketPage() {
     useState<RoundRobinMatchWithPlayers | null>(null);
   const [battleModalOpen, setBattleModalOpen] = useState(false);
 
+  // Debug user data
+  console.log("TournamentBracketPage - User data:", {
+    user: user,
+    userId: user?.id,
+    displayName: user?.display_name,
+    email: user?.email,
+    role: user?.role,
+    avatarUrl: user?.avatar_url,
+  });
+
+  // Better username fallback logic
+  const getUsername = () => {
+    if (user?.display_name && user.display_name.trim()) {
+      return user.display_name;
+    }
+    if (user?.email) {
+      return user.email.split("@")[0];
+    }
+    return "User";
+  };
+
   const fetchMatches = useCallback(async () => {
     if (!params.id) return;
 
@@ -1741,10 +1762,21 @@ export default function TournamentBracketPage() {
             <TournamentChat
               tournamentId={params.id as string}
               currentUserId={user.id}
-              currentUsername={user.display_name || "Anonymous"}
+              currentUsername={getUsername()}
               currentUserAvatar={user.avatar_url || undefined}
             />
           </div>
+        )}
+
+        {/* Show message if user is not loaded */}
+        {!user && (
+          <Card className="mt-6">
+            <CardContent className="pt-6">
+              <p className="text-center text-muted-foreground">
+                Please log in to participate in the tournament chat.
+              </p>
+            </CardContent>
+          </Card>
         )}
 
         {/* Error Display */}
