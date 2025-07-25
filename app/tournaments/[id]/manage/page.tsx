@@ -172,7 +172,15 @@ export default function TournamentManagePage() {
     if (!tournament) return;
 
     setActionLoading(true);
+    setError(""); // Clear any previous errors
+
     try {
+      // First, check if user has permission to delete
+      if (!canManage()) {
+        setError("You don't have permission to delete this tournament");
+        return;
+      }
+
       const { error } = await supabase
         .from("tournaments")
         .delete()
@@ -180,14 +188,24 @@ export default function TournamentManagePage() {
 
       if (error) {
         console.error("Error deleting tournament:", error);
-        setError("Failed to delete tournament: " + error.message);
+        if (error.code === "42501") {
+          setError(
+            "Permission denied: You don't have permission to delete this tournament"
+          );
+        } else if (error.code === "23503") {
+          setError(
+            "Cannot delete tournament: It may have active matches or participants"
+          );
+        } else {
+          setError("Failed to delete tournament: " + error.message);
+        }
       } else {
         setShowDeleteDialog(false);
         router.push("/tournaments");
       }
     } catch (error) {
       console.error("Error deleting tournament:", error);
-      setError("Failed to delete tournament");
+      setError("Failed to delete tournament. Please try again.");
     } finally {
       setActionLoading(false);
     }
@@ -545,7 +563,17 @@ export default function TournamentManagePage() {
         {/* Error Alert */}
         {error && (
           <Alert variant="destructive" className="mt-6">
-            <AlertDescription>{error}</AlertDescription>
+            <AlertDescription className="font-medium">{error}</AlertDescription>
+            <div className="mt-2 text-sm">
+              <p>If you&apos;re having trouble deleting the tournament:</p>
+              <ul className="list-disc list-inside mt-1 space-y-1">
+                <li>
+                  Make sure you&apos;re the tournament creator or an admin
+                </li>
+                <li>Check if the tournament has any active matches</li>
+                <li>Try refreshing the page and try again</li>
+              </ul>
+            </div>
           </Alert>
         )}
       </div>

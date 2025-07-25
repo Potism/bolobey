@@ -1,7 +1,7 @@
 "use client";
 
 import { motion } from "framer-motion";
-import { ReactNode } from "react";
+import { ReactNode, useEffect, useState } from "react";
 import { cn } from "@/lib/utils";
 
 interface AnimatedTextProps {
@@ -17,7 +17,43 @@ export function AnimatedText({
   delay = 0,
   staggerDelay = 0.05,
 }: AnimatedTextProps) {
-  const text = children?.toString() || "";
+  const [isMobile, setIsMobile] = useState(false);
+
+  useEffect(() => {
+    const checkMobile = () => {
+      setIsMobile(window.innerWidth < 768);
+    };
+
+    checkMobile();
+    window.addEventListener("resize", checkMobile);
+    return () => window.removeEventListener("resize", checkMobile);
+  }, []);
+
+  // Handle ReactNode properly and convert to string safely
+  const getTextContent = (node: ReactNode): string => {
+    if (typeof node === "string") return node;
+    if (typeof node === "number") return node.toString();
+    if (typeof node === "boolean") return node.toString();
+    if (node === null || node === undefined) return "";
+    if (Array.isArray(node)) return node.map(getTextContent).join("");
+    return "";
+  };
+
+  const text = getTextContent(children);
+
+  // On mobile, use simpler animation without letter-by-letter
+  if (isMobile) {
+    return (
+      <motion.div
+        initial={{ opacity: 0, y: 10 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.6, delay }}
+        className={cn("inline-block", className)}
+      >
+        {text}
+      </motion.div>
+    );
+  }
 
   return (
     <motion.div
@@ -26,7 +62,8 @@ export function AnimatedText({
       transition={{ duration: 0.5, delay }}
       className={cn("inline-block", className)}
     >
-      {text.split("").map((char, index) => (
+      {/* Use Array.from to properly handle emojis and Unicode characters */}
+      {Array.from(text).map((char, index) => (
         <motion.span
           key={index}
           initial={{ opacity: 0, y: 20 }}

@@ -1,7 +1,7 @@
 "use client";
 
 import { motion } from "framer-motion";
-import { ReactNode } from "react";
+import { ReactNode, useEffect, useState } from "react";
 import { cn } from "@/lib/utils";
 import { Button } from "./button";
 
@@ -21,6 +21,18 @@ export function AnimatedButton({
   whileTap = true,
   ...props
 }: AnimatedButtonProps) {
+  const [isMobile, setIsMobile] = useState(false);
+
+  useEffect(() => {
+    const checkMobile = () => {
+      setIsMobile(window.innerWidth < 768);
+    };
+
+    checkMobile();
+    window.addEventListener("resize", checkMobile);
+    return () => window.removeEventListener("resize", checkMobile);
+  }, []);
+
   return (
     <motion.div
       initial={{ opacity: 0, scale: 0.9 }}
@@ -31,7 +43,7 @@ export function AnimatedButton({
         ease: [0.25, 0.46, 0.45, 0.94],
       }}
       whileHover={
-        whileHover
+        whileHover && !isMobile
           ? {
               scale: 1.05,
               transition: {

@@ -228,6 +228,18 @@
     scroll-behavior: smooth;
   }
 
+  /* Mobile optimizations */
+  @media (max-width: 768px) {
+    /* Optimize animations for mobile */
+    .animate-float {
+      animation-duration: 8s;
+    }
+
+    .animate-pulse-slow {
+      animation-duration: 4s;
+    }
+  }
+
   /* Enhanced focus states */
   .focus-ring {
     @apply focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 focus:ring-offset-background;

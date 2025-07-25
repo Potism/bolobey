@@ -168,10 +168,7 @@ export default function HomePage() {
               {/* Subtitle */}
               <p className="text-2xl md:text-3xl font-light text-muted-foreground mb-12 leading-relaxed">
                 <AnimatedText delay={0.8} staggerDelay={0.03}>
-                  Tournament management,{" "}
-                  <span className="text-foreground font-medium">
-                    reimagined
-                  </span>
+                  Tournament management, reimagined
                 </AnimatedText>
               </p>
 
