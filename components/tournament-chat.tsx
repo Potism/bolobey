@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -26,6 +26,12 @@ interface TournamentChatProps {
   currentUserAvatar?: string;
 }
 
+// User cache to reduce database calls
+const userCache = new Map<
+  string,
+  { id: string; display_name: string; avatar_url?: string }
+>();
+
 export function TournamentChat({
   tournamentId,
   currentUserId,
@@ -41,35 +47,74 @@ export function TournamentChat({
   const [isMuted, setIsMuted] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
-
-  // Debug logging
-  console.log("TournamentChat props:", {
-    tournamentId,
-    currentUserId,
-    currentUsername,
-    currentUserAvatar,
-  });
+  const debounceTimeoutRef = useRef<NodeJS.Timeout | undefined>(undefined);
+  const userIntervalRef = useRef<NodeJS.Timeout | undefined>(undefined);
+  const channelRef = useRef<ReturnType<typeof supabase.channel> | null>(null);
 
   // Validate user data
-  const isValidUser =
-    currentUserId &&
-    currentUsername &&
-    currentUsername !== "Anonymous" &&
-    currentUsername !== "User" &&
-    currentUsername.trim().length > 0;
+  const isValidUser = useMemo(() => {
+    return (
+      currentUserId &&
+      currentUsername &&
+      currentUsername !== "Anonymous" &&
+      currentUsername !== "User" &&
+      currentUsername.trim().length > 0
+    );
+  }, [currentUserId, currentUsername]);
 
-  console.log("User validation:", {
-    hasUserId: !!currentUserId,
-    hasUsername: !!currentUsername,
-    username: currentUsername,
-    isValidUser,
-  });
+  // Add system message
+  const addSystemMessage = useCallback(
+    async (message: string) => {
+      try {
+        const { error } = await supabase
+          .from("chat_messages")
+          .insert({
+            tournament_id: tournamentId,
+            user_id: currentUserId,
+            message,
+            message_type: "system",
+          })
+          .select();
+
+        if (error) {
+          // Silent error handling for system messages
+        }
+      } catch {
+        // Silent error handling
+      }
+    },
+    [tournamentId, currentUserId]
+  );
+
+  // Fetch user data with caching
+  const fetchUserData = useCallback(async (userId: string) => {
+    // Check cache first
+    if (userCache.has(userId)) {
+      return userCache.get(userId);
+    }
+
+    try {
+      const { data: userData, error } = await supabase
+        .from("users")
+        .select("id, display_name, avatar_url")
+        .eq("id", userId)
+        .single();
+
+      if (error || !userData) {
+        return null;
+      }
+
+      // Cache the user data
+      userCache.set(userId, userData);
+      return userData;
+    } catch {
+      return null;
+    }
+  }, []);
 
   // Fetch existing messages
-  const fetchMessages = async () => {
+  const fetchMessages = useCallback(async () => {
     try {
-      console.log("Fetching messages for tournament:", tournamentId);
-
       const { data, error } = await supabase
         .from("chat_messages")
         .select(
@@ -83,16 +128,22 @@ export function TournamentChat({
         .limit(100);
 
       if (error) {
-        console.error("Error fetching messages:", error);
         return;
       }
 
-      console.log("Fetched messages:", data);
       setMessages(data || []);
+
+      // Cache user data for all messages
+      if (data) {
+        data.forEach((message) => {
+          if (message.user && !userCache.has(message.user.id)) {
+            userCache.set(message.user.id, message.user);
+          }
+        });
+      }
 
       // Add welcome message if no messages exist and this is the first time
       if (!data || data.length === 0) {
-        // Check if we already added a welcome message for this session
         const welcomeKey = `welcome-${tournamentId}`;
         if (!sessionStorage.getItem(welcomeKey)) {
           await addSystemMessage(
@@ -101,59 +152,80 @@ export function TournamentChat({
           sessionStorage.setItem(welcomeKey, "true");
         }
       }
-    } catch (error) {
-      console.error("Error fetching messages:", error);
+    } catch {
+      // Silent error handling
     } finally {
       setIsLoading(false);
     }
-  };
+  }, [tournamentId, currentUsername, addSystemMessage]);
 
-  // Add system message
-  const addSystemMessage = async (message: string) => {
+  // Send message function
+  const sendMessage = useCallback(async () => {
+    if (!newMessage.trim() || !isConnected || !isValidUser || isSending) return;
+
+    setIsSending(true);
+
     try {
-      console.log("Adding system message:", message);
-      console.log("System message data:", {
-        tournament_id: tournamentId,
-        user_id: currentUserId,
-        message,
-        message_type: "system",
-      });
+      // Check if user is authenticated
+      const {
+        data: { user },
+        error: authError,
+      } = await supabase.auth.getUser();
 
-      const { data, error } = await supabase
+      if (authError || !user) {
+        alert("You must be logged in to send messages.");
+        return;
+      }
+
+      const { error } = await supabase
         .from("chat_messages")
         .insert({
           tournament_id: tournamentId,
           user_id: currentUserId,
-          message,
-          message_type: "system",
+          message: newMessage.trim(),
+          message_type: "message",
         })
         .select();
 
       if (error) {
-        console.error("Error adding system message:", error);
-        console.error("System message error details:", {
-          code: error.code,
-          message: error.message,
-          details: error.details,
-          hint: error.hint,
-        });
-        // Don't show alert for system messages, just log the error
+        alert(`Error sending message: ${error.message} (Code: ${error.code})`);
       } else {
-        console.log("System message added successfully:", data);
+        setNewMessage("");
       }
     } catch (error) {
-      console.error("Error adding system message:", error);
+      alert(
+        `Error sending message: ${
+          error instanceof Error ? error.message : "Unknown error"
+        }`
+      );
+    } finally {
+      setIsSending(false);
     }
-  };
+  }, [
+    newMessage,
+    isConnected,
+    isValidUser,
+    isSending,
+    tournamentId,
+    currentUserId,
+  ]);
+
+  // Debounced message sending for Enter key
+  const debouncedSendMessage = useCallback(() => {
+    if (debounceTimeoutRef.current) {
+      clearTimeout(debounceTimeoutRef.current);
+    }
+
+    debounceTimeoutRef.current = setTimeout(() => {
+      sendMessage();
+    }, 300);
+  }, [sendMessage]);
 
   // Subscribe to real-time updates
   useEffect(() => {
     if (!isValidUser) {
-      console.log("User data not valid, skipping chat initialization");
       return;
     }
-
-    console.log("Initializing real-time chat for tournament:", tournamentId);
 
     // Fetch existing messages
     fetchMessages();
@@ -169,247 +241,137 @@ export function TournamentChat({
           table: "chat_messages",
           filter: `tournament_id=eq.${tournamentId}`,
         },
-        (payload) => {
-          console.log("New message received:", payload);
+        async (payload) => {
           const newMessage = payload.new as ChatMessage;
 
-          // Fetch the user data for the new message
-          supabase
-            .from("users")
-            .select("id, display_name, avatar_url")
-            .eq("id", newMessage.user_id)
-            .single()
-            .then(({ data: userData }) => {
-              if (userData) {
-                const messageWithUser: ChatMessage = {
-                  ...newMessage,
-                  user: {
-                    id: userData.id,
-                    display_name: userData.display_name,
-                    email: "", // We don't have this from the select
-                    role: "player" as const, // Default role
-                    avatar_url: userData.avatar_url,
-                    created_at: "", // We don't have this from the select
-                    updated_at: "", // We don't have this from the select
-                  },
-                };
-                setMessages((prev) => [...prev, messageWithUser]);
-              } else {
-                // If no user data, just add the message without user info
-                setMessages((prev) => [...prev, newMessage]);
-              }
-            });
+          // Use cached user data if available, otherwise fetch
+          let userData: {
+            id: string;
+            display_name: string;
+            avatar_url?: string;
+          } | null = userCache.get(newMessage.user_id) || null;
+          if (!userData) {
+            userData = await fetchUserData(newMessage.user_id);
+          }
+
+          if (userData) {
+            const messageWithUser: ChatMessage = {
+              ...newMessage,
+              user: {
+                id: userData.id,
+                display_name: userData.display_name,
+                email: "",
+                role: "player" as const,
+                avatar_url: userData.avatar_url || null,
+                created_at: "",
+                updated_at: "",
+              },
+            };
+            setMessages((prev) => [...prev, messageWithUser]);
+          } else {
+            setMessages((prev) => [...prev, newMessage]);
+          }
         }
       )
       .subscribe((status) => {
-        console.log("Subscription status:", status);
         setIsConnected(status === "SUBSCRIBED");
       });
 
+    // Store channel reference for cleanup
+    channelRef.current = channel;
+
     // Simulate online users count
-    const userInterval = setInterval(() => {
+    userIntervalRef.current = setInterval(() => {
       const randomChange = Math.floor(Math.random() * 3) - 1;
       setOnlineUsersCount((prev) => Math.max(1, prev + randomChange));
     }, 15000);
 
+    // Cleanup function
     return () => {
-      console.log("Cleaning up chat subscription");
-      supabase.removeChannel(channel);
-      clearInterval(userInterval);
+      if (debounceTimeoutRef.current) {
+        clearTimeout(debounceTimeoutRef.current);
+      }
+      if (userIntervalRef.current) {
+        clearInterval(userIntervalRef.current);
+      }
+      if (channelRef.current) {
+        supabase.removeChannel(channelRef.current);
+      }
     };
-  }, [tournamentId, currentUserId, currentUsername, isValidUser]);
+  }, [
+    tournamentId,
+    currentUserId,
+    currentUsername,
+    isValidUser,
+    fetchMessages,
+    fetchUserData,
+  ]);
 
-  // Test database connectivity and table existence
-  const testDatabaseConnection = async () => {
-    try {
-      console.log("Testing database connection...");
-
-      // Test 1: Check if table exists
-      const { data: tableExists, error: tableError } = await supabase
-        .from("information_schema.tables")
-        .select("table_name")
-        .eq("table_schema", "public")
-        .eq("table_name", "chat_messages")
-        .single();
-
-      console.log("Table exists check:", { tableExists, tableError });
-
-      // Test 2: Try to select from table
-      const { data: testSelect, error: selectError } = await supabase
-        .from("chat_messages")
-        .select("id")
-        .limit(1);
-
-      console.log("Test select:", { testSelect, selectError });
-
-      // Test 3: Check user permissions
-      const { data: user, error: userError } = await supabase.auth.getUser();
-      console.log("Current user:", { user, userError });
-
-      return { tableExists, selectError, userError };
-    } catch (error) {
-      console.error("Database connection test failed:", error);
-      return { error };
-    }
-  };
-
-  // Test user permissions and tournament participation
-  const testUserPermissions = async () => {
-    try {
-      console.log("Testing user permissions...");
-
-      // Check current user
-      const { data: user, error: userError } = await supabase.auth.getUser();
-      console.log("Current user:", { user, userError });
-
-      // Check if user is a tournament participant
-      const { data: participant, error: participantError } = await supabase
-        .from("tournament_participants")
-        .select("*")
-        .eq("tournament_id", tournamentId)
-        .eq("user_id", currentUserId)
-        .single();
-
-      console.log("Tournament participant check:", {
-        participant,
-        participantError,
-      });
-
-      // Test direct insert without RLS
-      const { data: testInsert, error: insertError } = await supabase
-        .from("chat_messages")
-        .insert({
-          tournament_id: tournamentId,
-          user_id: currentUserId,
-          message: "Test message",
-          message_type: "message",
-        })
-        .select();
-
-      console.log("Test insert result:", { testInsert, insertError });
-
-      return { user, participant, insertError };
-    } catch (error) {
-      console.error("Permission test failed:", error);
-      return { error };
-    }
-  };
-
-  // Add test button in development
+  // Cleanup on unmount
   useEffect(() => {
-    if (process.env.NODE_ENV === "development") {
-      // Only test database connection, don't auto-insert test messages
-      testDatabaseConnection();
-      testUserPermissions();
-    }
+    return () => {
+      if (debounceTimeoutRef.current) {
+        clearTimeout(debounceTimeoutRef.current);
+      }
+      if (userIntervalRef.current) {
+        clearInterval(userIntervalRef.current);
+      }
+      if (channelRef.current) {
+        supabase.removeChannel(channelRef.current);
+      }
+    };
   }, []);
 
   useEffect(() => {
     scrollToBottom();
   }, [messages]);
 
-  const scrollToBottom = () => {
+  const scrollToBottom = useCallback(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
-  };
+  }, []);
 
-  const sendMessage = async () => {
-    if (!newMessage.trim() || !isConnected || !isValidUser || isSending) return;
-
-    setIsSending(true);
-
-    try {
-      console.log("Sending message:", newMessage);
-      console.log("Message data:", {
-        tournament_id: tournamentId,
-        user_id: currentUserId,
-        message: newMessage.trim(),
-        message_type: "message",
-      });
-
-      // First, check if user is authenticated
-      const {
-        data: { user },
-        error: authError,
-      } = await supabase.auth.getUser();
-      console.log("Auth check:", { user, authError });
-
-      if (authError || !user) {
-        console.error("User not authenticated:", authError);
-        alert("You must be logged in to send messages.");
-        return;
+  const handleKeyPress = useCallback(
+    (e: React.KeyboardEvent) => {
+      if (e.key === "Enter" && !e.shiftKey) {
+        e.preventDefault();
+        debouncedSendMessage();
       }
+    },
+    [debouncedSendMessage]
+  );
 
-      const { data, error } = await supabase
-        .from("chat_messages")
-        .insert({
-          tournament_id: tournamentId,
-          user_id: currentUserId,
-          message: newMessage.trim(),
-          message_type: "message",
-        })
-        .select();
-
-      if (error) {
-        console.error("Error sending message:", error);
-        console.error("Error details:", {
-          code: error.code,
-          message: error.message,
-          details: error.details,
-          hint: error.hint,
-        });
-        alert(`Error sending message: ${error.message} (Code: ${error.code})`);
-      } else {
-        console.log("Message sent successfully:", data);
-        setNewMessage("");
-      }
-    } catch (error) {
-      console.error("Error sending message:", error);
-      alert(
-        `Error sending message: ${
-          error instanceof Error ? error.message : "Unknown error"
-        }`
-      );
-    } finally {
-      setIsSending(false);
-    }
-  };
-
-  const handleKeyPress = (e: React.KeyboardEvent) => {
-    if (e.key === "Enter" && !e.shiftKey) {
-      e.preventDefault();
-      sendMessage();
-    }
-  };
-
-  const formatTime = (dateString: string) => {
+  const formatTime = useCallback((dateString: string) => {
     return new Date(dateString).toLocaleTimeString([], {
       hour: "2-digit",
       minute: "2-digit",
     });
-  };
+  }, []);
 
-  const getInitials = (name: string) => {
+  const getInitials = useCallback((name: string) => {
     return name
       .split(" ")
       .map((n) => n[0])
       .join("")
       .toUpperCase()
       .slice(0, 2);
-  };
+  }, []);
 
-  const getDisplayName = (message: ChatMessage) => {
+  const getDisplayName = useCallback((message: ChatMessage) => {
     if (message.message_type === "system") {
       return "System";
     }
     return message.user?.display_name || "Unknown User";
-  };
+  }, []);
 
-  const getAvatar = (message: ChatMessage) => {
-    if (message.message_type === "system") {
-      return undefined;
-    }
-    return message.user?.avatar_url || currentUserAvatar;
-  };
+  const getAvatar = useCallback(
+    (message: ChatMessage) => {
+      if (message.message_type === "system") {
+        return undefined;
+      }
+      return message.user?.avatar_url || currentUserAvatar;
+    },
+    [currentUserAvatar]
+  );
 
   return (
     <Card className="h-[600px] flex flex-col bg-background overflow-hidden">
