@@ -11,6 +11,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
 import { Alert, AlertDescription } from "@/components/ui/alert";
+import { TournamentChat } from "@/components/tournament-chat";
 import {
   Dialog,
   DialogContent,
@@ -626,6 +627,18 @@ export default function TournamentManagePage() {
               </CardContent>
             </Card>
           )}
+
+        {/* Tournament Chat */}
+        {user && (
+          <div className="mt-6">
+            <TournamentChat
+              tournamentId={params.id as string}
+              currentUserId={user.id}
+              currentUsername={user.display_name || "Anonymous"}
+              currentUserAvatar={user.avatar_url || undefined}
+            />
+          </div>
+        )}
 
         {/* Error Alert */}
         {error && (

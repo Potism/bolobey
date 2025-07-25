@@ -15,7 +15,6 @@ import {
   Volume2,
   VolumeX,
 } from "lucide-react";
-import { realtimeService } from "@/lib/realtime";
 
 interface ChatMessage {
   id: string;
@@ -34,6 +33,10 @@ interface TournamentChatProps {
   currentUserAvatar?: string;
 }
 
+// Simple in-memory chat storage (in a real app, this would be in a database)
+const chatMessages: Map<string, ChatMessage[]> = new Map();
+const onlineUsers: Map<string, Set<string>> = new Map();
+
 export function TournamentChat({
   tournamentId,
   currentUserId,
@@ -42,93 +45,59 @@ export function TournamentChat({
 }: TournamentChatProps) {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [newMessage, setNewMessage] = useState("");
-  const [isConnected, setIsConnected] = useState(false);
-  const [onlineUsers, setOnlineUsers] = useState(0);
+  const [isConnected] = useState(true);
+  const [onlineUsersCount, setOnlineUsersCount] = useState(1);
   const [isMuted, setIsMuted] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
-    // Connect to chat
-    realtimeService.connect();
-    realtimeService.joinTournament(tournamentId);
+    // Initialize chat for this tournament
+    if (!chatMessages.has(tournamentId)) {
+      chatMessages.set(tournamentId, []);
+    }
 
-    // Subscribe to chat messages
-    const unsubscribe = realtimeService.subscribe("chat_message", (data) => {
-      if (
-        "tournamentId" in data &&
-        data.tournamentId === tournamentId &&
-        "data" in data
-      ) {
-        const chatData = data.data as Record<string, unknown>;
-        if (chatData.type === "message" && chatData.userId !== currentUserId) {
-          addMessage({
-            id: Date.now().toString(),
-            userId: chatData.userId as string,
-            username: chatData.username as string,
-            avatar: chatData.avatar as string,
-            message: chatData.message as string,
-            timestamp: new Date(),
-            type: "message",
-          });
-        }
-      }
-    });
+    if (!onlineUsers.has(tournamentId)) {
+      onlineUsers.set(tournamentId, new Set());
+    }
 
-    // Subscribe to system messages
-    const systemUnsubscribe = realtimeService.subscribe(
-      "tournament_update",
-      (data) => {
-        if (
-          "tournamentId" in data &&
-          data.tournamentId === tournamentId &&
-          "data" in data
-        ) {
-          const updateData = data.data as Record<string, unknown>;
-          if (
-            updateData.type === "match_started" ||
-            updateData.type === "match_completed"
-          ) {
-            addMessage({
-              id: Date.now().toString(),
-              userId: "system",
-              username: "System",
-              message: getSystemMessage(updateData),
-              timestamp: new Date(),
-              type: "system",
-            });
-          }
-        }
-      }
-    );
+    // Add current user to online users
+    onlineUsers.get(tournamentId)?.add(currentUserId);
+    setOnlineUsersCount(onlineUsers.get(tournamentId)?.size || 1);
 
-    // Add welcome message
-    addMessage({
-      id: "welcome",
-      userId: "system",
-      username: "System",
-      message: `Welcome to the tournament chat! ${currentUsername} joined the conversation.`,
-      timestamp: new Date(),
-      type: "system",
-    });
+    // Load existing messages
+    setMessages(chatMessages.get(tournamentId) || []);
 
-    // Simulate online users
+    // Add welcome message if no messages exist
+    if ((chatMessages.get(tournamentId) || []).length === 0) {
+      const welcomeMessage: ChatMessage = {
+        id: "welcome",
+        userId: "system",
+        username: "System",
+        message: `Welcome to the tournament chat! ${currentUsername} joined the conversation.`,
+        timestamp: new Date(),
+        type: "system",
+      };
+
+      chatMessages.get(tournamentId)?.push(welcomeMessage);
+      setMessages([welcomeMessage]);
+    }
+
+    // Simulate other users joining/leaving
     const userInterval = setInterval(() => {
-      setOnlineUsers((prev) =>
-        Math.max(5, prev + Math.floor(Math.random() * 3) - 1)
-      );
-    }, 10000);
-
-    const connectionCheck = setInterval(() => {
-      setIsConnected(realtimeService.isConnected());
-    }, 3000);
+      const currentUsers = onlineUsers.get(tournamentId);
+      if (currentUsers) {
+        // Simulate user activity
+        const randomChange = Math.floor(Math.random() * 3) - 1; // -1, 0, or 1
+        const newCount = Math.max(1, currentUsers.size + randomChange);
+        setOnlineUsersCount(newCount);
+      }
+    }, 15000);
 
     return () => {
-      unsubscribe();
-      systemUnsubscribe();
-      realtimeService.leaveTournament(tournamentId);
+      // Remove user from online users when component unmounts
+      onlineUsers.get(tournamentId)?.delete(currentUserId);
       clearInterval(userInterval);
-      clearInterval(connectionCheck);
     };
   }, [tournamentId, currentUserId, currentUsername]);
 
@@ -137,7 +106,10 @@ export function TournamentChat({
   }, [messages]);
 
   const addMessage = (message: ChatMessage) => {
-    setMessages((prev) => [...prev, message]);
+    const tournamentMessages = chatMessages.get(tournamentId) || [];
+    tournamentMessages.push(message);
+    chatMessages.set(tournamentId, tournamentMessages);
+    setMessages([...tournamentMessages]);
   };
 
   const scrollToBottom = () => {
@@ -160,16 +132,6 @@ export function TournamentChat({
     // Add to local messages
     addMessage(message);
 
-    // Send to server
-    realtimeService.sendChatMessage({
-      tournamentId,
-      userId: currentUserId,
-      username: currentUsername,
-      avatar: currentUserAvatar,
-      message: newMessage.trim(),
-      timestamp: new Date().toISOString(),
-    });
-
     setNewMessage("");
   };
 
@@ -178,15 +140,6 @@ export function TournamentChat({
       e.preventDefault();
       sendMessage();
     }
-  };
-
-  const getSystemMessage = (data: Record<string, unknown>): string => {
-    if (data.type === "match_started") {
-      return `🎮 Match ${data.matchNumber} has started!`;
-    } else if (data.type === "match_completed") {
-      return `🏆 Match ${data.matchNumber} completed! ${data.winner} wins!`;
-    }
-    return "Tournament update";
   };
 
   const formatTime = (date: Date) => {
@@ -224,7 +177,7 @@ export function TournamentChat({
             </Badge>
             <Badge variant="outline" className="text-xs">
               <Users className="h-3 w-3 mr-1" />
-              {onlineUsers}
+              {onlineUsersCount}
             </Badge>
             <Button
               size="sm"

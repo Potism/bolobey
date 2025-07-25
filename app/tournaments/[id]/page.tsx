@@ -78,7 +78,7 @@ export default function TournamentPage() {
   const [error, setError] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState("dashboard");
   const [selectedMatch, setSelectedMatch] = useState<Match | null>(null);
-  const [currentUser, setCurrentUser] = useState<unknown>(null);
+  const [currentUser, setCurrentUser] = useState<any>(null);
   const [joining, setJoining] = useState(false);
 
   useEffect(() => {
@@ -187,7 +187,12 @@ export default function TournamentPage() {
               score: match.player1_score,
               avatar: player1.avatar_url,
             }
-          : undefined,
+          : {
+              id: match.player1_id || "unknown",
+              name: "TBD",
+              score: match.player1_score,
+              avatar: undefined,
+            },
         player2: player2
           ? {
               id: player2.user_id,
@@ -195,7 +200,12 @@ export default function TournamentPage() {
               score: match.player2_score,
               avatar: player2.avatar_url,
             }
-          : undefined,
+          : {
+              id: match.player2_id || "unknown",
+              name: "TBD",
+              score: match.player2_score,
+              avatar: undefined,
+            },
         status: match.status as "pending" | "in_progress" | "completed",
         winner: winner
           ? {

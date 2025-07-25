@@ -71,28 +71,32 @@ export function calculateRoundRobinStandings(
     .map((participant) => ({
       user_id: participant.user_id,
       display_name: participant.display_name,
-      total_points: participant.total_points,
+      total_points: participant.total_points || 0,
       burst_points: 0, // Will be calculated from battles
       ringout_points: 0, // Will be calculated from battles
       spinout_points: 0, // Will be calculated from battles
-      matches_played: participant.matches_played,
-      matches_won: participant.matches_won,
-      win_percentage: participant.matches_played > 0 
-        ? Math.round((participant.matches_won / participant.matches_played) * 100 * 100) / 100
+      matches_played: participant.matches_played || 0,
+      matches_won: participant.matches_won || 0,
+      win_percentage: (participant.matches_played || 0) > 0 
+        ? Math.round(((participant.matches_won || 0) / (participant.matches_played || 1)) * 100 * 100) / 100
         : 0,
       rank: 0,
     }))
     .sort((a, b) => {
-      // Sort by total points (descending)
+      // Primary sort: Total points (descending)
       if (b.total_points !== a.total_points) {
         return b.total_points - a.total_points;
       }
-      // Then by win percentage (descending)
+      // Secondary sort: Win percentage (descending)
       if (b.win_percentage !== a.win_percentage) {
         return b.win_percentage - a.win_percentage;
       }
-      // Then by matches won (descending)
-      return b.matches_won - a.matches_won;
+      // Tertiary sort: Matches won (descending)
+      if (b.matches_won !== a.matches_won) {
+        return b.matches_won - a.matches_won;
+      }
+      // Quaternary sort: Matches played (ascending - fewer matches played is better)
+      return a.matches_played - b.matches_played;
     })
     .map((standing, index) => ({
       ...standing,

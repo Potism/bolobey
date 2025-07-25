@@ -16,7 +16,7 @@ import {
   TrendingUp,
   Target,
 } from "lucide-react";
-import { realtimeService } from "@/lib/realtime";
+// Removed realtime service dependency - using local state instead
 
 interface TournamentStats {
   totalMatches: number;
@@ -88,7 +88,7 @@ export function LiveTournamentDashboard({
       (m) => m.status === "in_progress"
     ).length;
     const totalParticipants = new Set([
-      ...matches.flatMap((m) => [m.player1.id, m.player2.id]),
+      ...matches.flatMap((m) => [m.player1?.id, m.player2?.id].filter(Boolean)),
     ]).size;
 
     const tournamentProgress =
@@ -108,99 +108,20 @@ export function LiveTournamentDashboard({
   }, [matches]);
 
   useEffect(() => {
-    // Connect to real-time updates
-    realtimeService.connect();
-    realtimeService.joinTournament(tournamentId);
-
-    const unsubscribe = realtimeService.subscribe(
-      "tournament_update",
-      (data) => {
-        if ("tournamentId" in data && data.tournamentId === tournamentId) {
-          // Update live matches and stats
-          updateLiveData();
-        }
-      }
-    );
+    // Simulate real-time updates with local state
+    setIsConnected(true);
 
     // Simulate spectator count updates
     const spectatorInterval = setInterval(() => {
-      setSpectators((prev) => prev + Math.floor(Math.random() * 3) - 1);
+      setSpectators((prev) =>
+        Math.max(0, prev + Math.floor(Math.random() * 3) - 1)
+      );
     }, 5000);
 
-    const connectionCheck = setInterval(() => {
-      setIsConnected(realtimeService.isConnected());
-    }, 3000);
-
     return () => {
-      unsubscribe();
-      realtimeService.leaveTournament(tournamentId);
       clearInterval(spectatorInterval);
-      clearInterval(connectionCheck);
     };
   }, [tournamentId]);
-
-  const updateLiveData = () => {
-    // Update live matches
-    const currentLiveMatches = matches.filter(
-      (m) => m.status === "in_progress"
-    );
-    setLiveMatches(currentLiveMatches);
-
-    // Update recent results
-    const currentRecentResults = matches
-      .filter((m) => m.status === "completed")
-      .slice(-5);
-    setRecentResults(currentRecentResults);
-
-    // Update stats
-    const totalMatches = matches.length;
-    const completedMatches = matches.filter(
-      (m) => m.status === "completed"
-    ).length;
-    const activeMatches = currentLiveMatches.length;
-    const tournamentProgress =
-      totalMatches > 0 ? (completedMatches / totalMatches) * 100 : 0;
-
-    setStats((prev) => ({
-      ...prev,
-      completedMatches,
-      activeMatches,
-      tournamentProgress,
-    }));
-  };
-
-  const getStatusColor = (status: string) => {
-    switch (status) {
-      case "completed":
-        return "bg-green-500";
-      case "in_progress":
-        return "bg-blue-500";
-      case "pending":
-        return "bg-gray-500";
-      default:
-        return "bg-gray-500";
-    }
-  };
-
-  const getStatusText = (status: string) => {
-    switch (status) {
-      case "completed":
-        return "Completed";
-      case "in_progress":
-        return "Live";
-      case "pending":
-        return "Pending";
-      default:
-        return "Unknown";
-    }
-  };
-
-  const formatDuration = (minutes: number) => {
-    if (minutes < 60) return `${minutes}m`;
-    const hours = Math.floor(minutes / 60);
-    const mins = minutes % 60;
-    return `${hours}h ${mins}m`;
-  };
 
   return (
     <div className="space-y-6">

@@ -155,7 +155,10 @@ export function BracketVisualization({
 
     return (
       <motion.div
-        key={`${match.round}-${match.match_number}`}
+        key={
+          match.id ||
+          `${match.round}-${match.match_number}-${match.bracket_type}`
+        }
         className={`relative p-4 border rounded-lg cursor-pointer transition-all duration-200 ${
           isClickable
             ? "hover:shadow-lg hover:scale-105 bg-white dark:bg-slate-800"

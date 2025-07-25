@@ -20,6 +20,7 @@ import {
 import { Navigation } from "@/components/navigation";
 import { BracketVisualization } from "@/components/bracket-visualization";
 import { BattleScoringModal } from "@/components/battle-scoring-modal";
+import { TournamentChat } from "@/components/tournament-chat";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -37,6 +38,7 @@ import {
   Target,
   TrendingUp,
   RotateCcw,
+  Settings,
 } from "lucide-react";
 
 interface MatchWithPlayers {
@@ -276,14 +278,7 @@ export default function TournamentBracketPage() {
     } finally {
       setLoading(false);
     }
-  }, [
-    params.id,
-    fetchPhases,
-    fetchMatches,
-    fetchRoundRobinMatches,
-    matches.length,
-    roundRobinMatches.length,
-  ]);
+  }, [params.id, fetchPhases, fetchMatches, fetchRoundRobinMatches]);
 
   const handleGenerateBeybladeXTournament = async () => {
     if (!tournament?.tournament_participants) return;
@@ -452,14 +447,82 @@ export default function TournamentBracketPage() {
       status: match.status as "pending" | "in_progress" | "completed",
     }));
 
+    // Advance winners to next round matches
+    const updatedBracketMatches = bracketMatches.map((match) => {
+      // If this match is completed and has a winner, advance the winner to the next round
+      if (match.status === "completed" && match.winner) {
+        const nextRound = match.round + 1;
+        const nextMatchNumber = Math.ceil(match.match_number / 2);
+
+        // Find the next round match
+        // For the final round, bracket_type changes from "upper" to "final"
+        const nextBracketType =
+          nextRound === Math.max(...matches.map((m) => m.round))
+            ? "final"
+            : match.bracket_type;
+
+        const nextMatch = bracketMatches.find(
+          (m) =>
+            m.round === nextRound &&
+            m.match_number === nextMatchNumber &&
+            m.bracket_type === nextBracketType
+        );
+
+        if (nextMatch) {
+          // Determine if this winner should be player1 or player2 in the next match
+          const isFirstMatch = match.match_number % 2 === 1;
+
+          if (isFirstMatch) {
+            // This winner goes to player1 slot in next match
+            nextMatch.player1 = match.winner;
+          } else {
+            // This winner goes to player2 slot in next match
+            nextMatch.player2 = match.winner;
+          }
+        }
+      }
+
+      // Also handle bye players (matches with only one player)
+      if (match.player1 && !match.player2 && match.status === "pending") {
+        // This player gets a bye, advance them to the next round
+        const nextRound = match.round + 1;
+        const nextMatchNumber = Math.ceil(match.match_number / 2);
+
+        // For the final round, bracket_type changes from "upper" to "final"
+        const nextBracketType =
+          nextRound === Math.max(...matches.map((m) => m.round))
+            ? "final"
+            : match.bracket_type;
+
+        const nextMatch = bracketMatches.find(
+          (m) =>
+            m.round === nextRound &&
+            m.match_number === nextMatchNumber &&
+            m.bracket_type === nextBracketType
+        );
+
+        if (nextMatch) {
+          const isFirstMatch = match.match_number % 2 === 1;
+
+          if (isFirstMatch) {
+            nextMatch.player1 = match.player1;
+          } else {
+            nextMatch.player2 = match.player1;
+          }
+        }
+      }
+
+      return match;
+    });
+
     // Group by bracket type
-    const upperBracket = bracketMatches.filter(
+    const upperBracket = updatedBracketMatches.filter(
       (m) => m.bracket_type === "upper"
     );
-    const lowerBracket = bracketMatches.filter(
+    const lowerBracket = updatedBracketMatches.filter(
       (m) => m.bracket_type === "lower"
     );
-    const finalMatches = bracketMatches.filter(
+    const finalMatches = updatedBracketMatches.filter(
       (m) => m.bracket_type === "final"
     );
 
@@ -499,6 +562,107 @@ export default function TournamentBracketPage() {
         throw updateError;
       }
 
+      // Advance winner to next round match
+      const nextRound = roundNumber + 1;
+      const nextMatchNumber = Math.ceil(matchNumber / 2);
+
+      // Find the next round match and update it with the winner
+      // For the final round, bracket_type changes from "upper" to "final"
+      const maxRound = Math.max(
+        ...(bracket?.upper_bracket?.map((m) => m.round) || [])
+      );
+      const nextBracketType = nextRound === maxRound ? "final" : "upper";
+
+      const { data: nextMatch, error: nextMatchError } = await supabase
+        .from("matches")
+        .select("*")
+        .eq("tournament_id", params.id)
+        .eq("round", nextRound)
+        .eq("match_number", nextMatchNumber)
+        .eq("bracket_type", nextBracketType)
+        .single();
+
+      if (nextMatch && !nextMatchError) {
+        // Determine if this winner should be player1 or player2 in the next match
+        const isFirstMatch = matchNumber % 2 === 1;
+
+        const updateData: { player1_id?: string; player2_id?: string } = {};
+        if (isFirstMatch) {
+          // This winner goes to player1 slot in next match
+          updateData.player1_id = winnerId;
+        } else {
+          // This winner goes to player2 slot in next match
+          updateData.player2_id = winnerId;
+        }
+
+        const { error: advanceError } = await supabase
+          .from("matches")
+          .update(updateData)
+          .eq("id", nextMatch.id);
+
+        if (advanceError) {
+          console.error("Error advancing winner to next round:", advanceError);
+        }
+      }
+
+      // Also check if there's a match in the same round that has a "BYE" player
+      // and automatically advance the non-BYE player
+      const { data: sameRoundMatches, error: sameRoundError } = await supabase
+        .from("matches")
+        .select("*")
+        .eq("tournament_id", params.id)
+        .eq("round", roundNumber)
+        .neq("id", nextMatch?.id || "");
+
+      if (sameRoundMatches && !sameRoundError) {
+        for (const match of sameRoundMatches) {
+          // Check if this match has a BYE player (player2_id is null or undefined)
+          if (match.player1_id && !match.player2_id) {
+            // This player gets a bye, advance them to the next round
+            const byeNextMatchNumber = Math.ceil(match.match_number / 2);
+
+            const byeNextBracketType =
+              nextRound === maxRound ? "final" : "upper";
+
+            const { data: byeNextMatch, error: byeNextMatchError } =
+              await supabase
+                .from("matches")
+                .select("*")
+                .eq("tournament_id", params.id)
+                .eq("round", nextRound)
+                .eq("match_number", byeNextMatchNumber)
+                .eq("bracket_type", byeNextBracketType)
+                .single();
+
+            if (byeNextMatch && !byeNextMatchError) {
+              const isByeFirstMatch = match.match_number % 2 === 1;
+
+              const byeUpdateData: {
+                player1_id?: string;
+                player2_id?: string;
+              } = {};
+              if (isByeFirstMatch) {
+                byeUpdateData.player1_id = match.player1_id;
+              } else {
+                byeUpdateData.player2_id = match.player1_id;
+              }
+
+              const { error: byeAdvanceError } = await supabase
+                .from("matches")
+                .update(byeUpdateData)
+                .eq("id", byeNextMatch.id);
+
+              if (byeAdvanceError) {
+                console.error(
+                  "Error advancing bye player to next round:",
+                  byeAdvanceError
+                );
+              }
+            }
+          }
+        }
+      }
+
       // Refresh bracket data
       await fetchMatches();
 
@@ -509,12 +673,17 @@ export default function TournamentBracketPage() {
         .eq("tournament_id", params.id)
         .eq("status", "pending");
 
+      console.log("Remaining matches:", remainingMatches?.length || 0);
+
       if (!remainingMatches || remainingMatches.length === 0) {
+        console.log("No remaining matches - tournament should be complete");
+
         // Find the tournament winner by getting the final match winner
         const { data: finalMatches, error: finalMatchesError } = await supabase
           .from("matches")
           .select("winner_id, winner:users(id, display_name)")
           .eq("tournament_id", params.id)
+          .eq("bracket_type", "final")
           .eq("status", "completed")
           .order("round", { ascending: false })
           .order("match_number", { ascending: false })
@@ -522,121 +691,34 @@ export default function TournamentBracketPage() {
 
         if (finalMatchesError) {
           console.error("Error fetching final matches:", finalMatchesError);
-          throw finalMatchesError;
-        }
+          // Don't throw the error, just log it and continue
+          console.log("Continuing without updating tournament status");
+        } else {
+          console.log("Final matches found:", finalMatches);
 
-        console.log("Final matches found:", finalMatches);
+          const tournamentWinner = Array.isArray(finalMatches?.[0]?.winner)
+            ? (finalMatches?.[0]?.winner?.[0] as
+                | { id: string; display_name: string }
+                | undefined)
+            : (finalMatches?.[0]?.winner as
+                | { id: string; display_name: string }
+                | undefined);
+          const winnerId = finalMatches?.[0]?.winner_id;
 
-        const tournamentWinner = Array.isArray(finalMatches?.[0]?.winner)
-          ? (finalMatches?.[0]?.winner?.[0] as
-              | { id: string; display_name: string }
-              | undefined)
-          : (finalMatches?.[0]?.winner as
-              | { id: string; display_name: string }
-              | undefined);
-        const winnerId = finalMatches?.[0]?.winner_id;
-
-        console.log("Tournament winner data:", { winnerId, tournamentWinner });
-
-        if (winnerId && tournamentWinner) {
-          // Update tournament status and winner
-          const { error: tournamentError } = await supabase
-            .from("tournaments")
-            .update({
-              status: "completed",
-              winner_id: winnerId,
-            })
-            .eq("id", params.id);
-
-          if (tournamentError) {
-            console.error("Error updating tournament:", tournamentError);
-            throw tournamentError;
-          }
-
-          // Update tournament state
-          setTournament((prev) =>
-            prev
-              ? {
-                  ...prev,
-                  status: "completed",
-                  winner_id: winnerId,
-                  winner: {
-                    id: tournamentWinner.id,
-                    display_name: tournamentWinner.display_name,
-                    email: "",
-                    role: "player" as const,
-                    avatar_url: null,
-                    created_at: "",
-                    updated_at: "",
-                  } as User,
-                }
-              : null
-          );
-
-          // Set tournament completion state
-          setTournamentCompleted(true);
-          setChampion({
-            name: tournamentWinner.display_name,
-            id: winnerId,
+          console.log("Tournament winner data:", {
+            winnerId,
+            tournamentWinner,
           });
 
-          // Show success message for tournament completion
-          console.log(
-            `Tournament completed! Champion: ${tournamentWinner.display_name}`
-          );
-
-          // Debug: Check if tournament was properly updated
-          const { data: updatedTournament, error: checkError } = await supabase
-            .from("tournaments")
-            .select("id, name, status, winner_id")
-            .eq("id", params.id)
-            .single();
-
-          if (checkError) {
-            console.error("Error checking tournament update:", checkError);
-          } else {
-            console.log("Tournament update check:", updatedTournament);
-          }
-
-          // Auto-hide the completion message after 5 seconds
-          setTimeout(() => {
-            setTournamentCompleted(false);
-            setChampion(null);
-          }, 5000);
-        } else {
-          console.error(
-            "Could not determine tournament winner from final matches"
-          );
-
-          // Fallback: Try to get winner from the last completed match
-          const { data: lastCompletedMatch, error: lastMatchError } =
-            await supabase
-              .from("matches")
-              .select("winner_id, winner:users(id, display_name)")
-              .eq("tournament_id", params.id)
-              .eq("status", "completed")
-              .not("winner_id", "is", null)
-              .order("completed_at", { ascending: false })
-              .limit(1)
-              .single();
-
-          if (lastMatchError) {
-            console.error(
-              "Error fetching last completed match:",
-              lastMatchError
-            );
-            throw new Error("Could not determine tournament winner");
-          }
-
-          if (lastCompletedMatch?.winner_id && lastCompletedMatch?.winner) {
-            console.log("Using fallback winner:", lastCompletedMatch);
+          if (winnerId && tournamentWinner) {
+            console.log("Updating tournament status to completed");
 
             // Update tournament status and winner
             const { error: tournamentError } = await supabase
               .from("tournaments")
               .update({
                 status: "completed",
-                winner_id: lastCompletedMatch.winner_id,
+                winner_id: winnerId,
               })
               .eq("id", params.id);
 
@@ -645,38 +727,155 @@ export default function TournamentBracketPage() {
               throw tournamentError;
             }
 
+            console.log("Tournament status updated successfully");
+
             // Update tournament state
             setTournament((prev) =>
               prev
                 ? {
                     ...prev,
                     status: "completed",
-                    winner_id: lastCompletedMatch.winner_id,
-                    winner: lastCompletedMatch.winner as unknown as User,
+                    winner_id: winnerId,
+                    winner: {
+                      id: tournamentWinner.id,
+                      display_name: tournamentWinner.display_name,
+                      email: "",
+                      role: "player" as const,
+                      avatar_url: null,
+                      created_at: "",
+                      updated_at: "",
+                    } as User,
                   }
                 : null
             );
 
             // Set tournament completion state
             setTournamentCompleted(true);
-            const winnerData = Array.isArray(lastCompletedMatch.winner)
-              ? lastCompletedMatch.winner[0]
-              : lastCompletedMatch.winner;
-
             setChampion({
-              name: (winnerData as { display_name: string }).display_name,
-              id: lastCompletedMatch.winner_id,
+              name: tournamentWinner.display_name,
+              id: winnerId,
             });
 
+            // Show success message for tournament completion
             console.log(
-              `Tournament completed! Champion: ${
-                (winnerData as { display_name: string }).display_name
-              }`
+              `Tournament completed! Champion: ${tournamentWinner.display_name}`
             );
+
+            // Debug: Check if tournament was properly updated
+            const { data: updatedTournament, error: checkError } =
+              await supabase
+                .from("tournaments")
+                .select("id, name, status, winner_id")
+                .eq("id", params.id)
+                .single();
+
+            if (checkError) {
+              console.error("Error checking tournament update:", checkError);
+            } else {
+              console.log("Tournament update check:", updatedTournament);
+            }
+
+            // Auto-hide the completion message after 5 seconds
+            setTimeout(() => {
+              setTournamentCompleted(false);
+              setChampion(null);
+            }, 5000);
+
+            // Refresh tournament data to update the status
+            await fetchTournamentAndBracket();
           } else {
-            throw new Error("Could not determine tournament winner");
+            console.error(
+              "Could not determine tournament winner from final matches"
+            );
+
+            // Fallback: Try to get winner from the last completed match
+            const { data: lastCompletedMatch, error: lastMatchError } =
+              await supabase
+                .from("matches")
+                .select("winner_id, winner:users(id, display_name)")
+                .eq("tournament_id", params.id)
+                .eq("status", "completed")
+                .not("winner_id", "is", null)
+                .order("completed_at", { ascending: false })
+                .limit(1)
+                .single();
+
+            if (lastMatchError) {
+              console.error(
+                "Error fetching last completed match:",
+                lastMatchError
+              );
+              throw new Error("Could not determine tournament winner");
+            }
+
+            if (lastCompletedMatch?.winner_id && lastCompletedMatch?.winner) {
+              console.log("Using fallback winner:", lastCompletedMatch);
+
+              // Handle the winner data structure from Supabase
+              const winnerData = Array.isArray(lastCompletedMatch.winner)
+                ? lastCompletedMatch.winner[0]
+                : lastCompletedMatch.winner;
+
+              console.log("Updating tournament status to completed (fallback)");
+
+              // Update tournament status and winner
+              const { error: tournamentError } = await supabase
+                .from("tournaments")
+                .update({
+                  status: "completed",
+                  winner_id: lastCompletedMatch.winner_id,
+                })
+                .eq("id", params.id);
+
+              if (tournamentError) {
+                console.error("Error updating tournament:", tournamentError);
+                throw tournamentError;
+              }
+
+              console.log("Tournament status updated successfully (fallback)");
+
+              // Update tournament state
+              setTournament((prev) =>
+                prev
+                  ? {
+                      ...prev,
+                      status: "completed",
+                      winner_id: lastCompletedMatch.winner_id,
+                      winner: {
+                        id: winnerData.id,
+                        display_name: winnerData.display_name,
+                        email: "",
+                        role: "player" as const,
+                        avatar_url: null,
+                        created_at: "",
+                        updated_at: "",
+                      } as User,
+                    }
+                  : null
+              );
+
+              // Set tournament completion state
+              setTournamentCompleted(true);
+              setChampion({
+                name: winnerData.display_name,
+                id: lastCompletedMatch.winner_id,
+              });
+
+              console.log(
+                `Tournament completed! Champion: ${winnerData.display_name}`
+              );
+
+              // Refresh tournament data to update the status
+              await fetchTournamentAndBracket();
+            }
           }
         }
+      } else {
+        console.log(
+          "Tournament not complete yet -",
+          remainingMatches.length,
+          "matches remaining"
+        );
       }
 
       // Note: Next round match creation logic removed as it's not needed for single elimination
@@ -923,9 +1122,97 @@ export default function TournamentBracketPage() {
 
       setRoundRobinStandings(standings);
       console.log("Updated standings:", standings);
+
+      // Check if round robin phase is complete and transition to elimination
+      const totalMatches = matches?.length || 0;
+      const expectedMatches =
+        (tournament.tournament_participants.length *
+          (tournament.tournament_participants.length - 1)) /
+        2;
+
+      if (totalMatches === expectedMatches && totalMatches > 0) {
+        console.log(
+          "Round robin phase complete, transitioning to elimination phase"
+        );
+        await transitionToEliminationPhase();
+      }
     } catch (error: unknown) {
       if (error instanceof Error) {
         console.error("Error updating standings:", error);
+      }
+    }
+  };
+
+  const transitionToEliminationPhase = async () => {
+    try {
+      // Complete the round robin phase
+      const { error: phaseError } = await supabase
+        .from("tournament_phases")
+        .update({
+          status: "completed",
+          completed_at: new Date().toISOString(),
+        })
+        .eq("tournament_id", params.id)
+        .eq("phase_type", "round_robin");
+
+      if (phaseError) throw phaseError;
+
+      // Create elimination phase
+      const { data: eliminationPhase, error: eliminationPhaseError } =
+        await supabase
+          .from("tournament_phases")
+          .insert({
+            tournament_id: params.id as string,
+            phase_type: "elimination",
+            phase_order: 2,
+            status: "in_progress",
+            started_at: new Date().toISOString(),
+          })
+          .select()
+          .single();
+
+      if (eliminationPhaseError) throw eliminationPhaseError;
+
+      // Get top 4 players from round robin standings for elimination bracket
+      const topPlayers = roundRobinStandings.slice(0, 4).map((s) => s.user_id);
+
+      // If less than 4 players, use all available players
+      const playersForElimination =
+        topPlayers.length >= 2
+          ? topPlayers
+          : tournament?.tournament_participants?.map((p) => p.user_id) || [];
+
+      // Generate elimination bracket
+      const { createMatches } = generateSingleEliminationBracket(
+        playersForElimination
+      );
+
+      const matchesWithIds = createMatches.map((match) => ({
+        ...match,
+        tournament_id: params.id as string,
+        phase_id: eliminationPhase.id,
+      }));
+
+      const { error: matchesError } = await supabase
+        .from("matches")
+        .insert(matchesWithIds);
+
+      if (matchesError) throw matchesError;
+
+      // Update tournament phase
+      await supabase
+        .from("tournaments")
+        .update({ current_phase: "elimination" })
+        .eq("id", params.id);
+
+      console.log("Transitioned to elimination phase successfully");
+
+      // Refresh data
+      await fetchMatches();
+      await fetchPhases();
+    } catch (error: unknown) {
+      if (error instanceof Error) {
+        console.error("Error transitioning to elimination phase:", error);
       }
     }
   };
@@ -956,8 +1243,127 @@ export default function TournamentBracketPage() {
       setTimeout(() => setCopied(false), 2000);
     } catch (error: unknown) {
       if (error instanceof Error) {
-        console.error("Failed to copy:", error);
+        console.error("Error copying to clipboard:", error);
       }
+    }
+  };
+
+  // Manual function to force update tournament status (for debugging)
+  const forceUpdateTournamentStatus = async () => {
+    try {
+      console.log("Force updating tournament status...");
+
+      // First, let's check what matches exist for this tournament
+      const { data: allMatches, error: allMatchesError } = await supabase
+        .from("matches")
+        .select("id, status, winner_id, completed_at")
+        .eq("tournament_id", params.id);
+
+      if (allMatchesError) {
+        console.error("Error fetching all matches:", allMatchesError);
+        alert("Error fetching matches: " + allMatchesError.message);
+        return;
+      }
+
+      console.log("All matches:", allMatches);
+
+      // Find completed matches with winners
+      const completedMatchesWithWinners = allMatches?.filter(
+        (match) => match.status === "completed" && match.winner_id
+      );
+
+      console.log(
+        "Completed matches with winners:",
+        completedMatchesWithWinners
+      );
+
+      if (
+        !completedMatchesWithWinners ||
+        completedMatchesWithWinners.length === 0
+      ) {
+        console.log("No completed matches with winners found");
+        alert("No completed matches with winners found");
+        return;
+      }
+
+      // Get the most recently completed match
+      const lastCompletedMatch = completedMatchesWithWinners.sort(
+        (a, b) =>
+          new Date(b.completed_at || 0).getTime() -
+          new Date(a.completed_at || 0).getTime()
+      )[0];
+
+      console.log("Last completed match:", lastCompletedMatch);
+
+      if (lastCompletedMatch?.winner_id) {
+        // Get the winner details
+        const { data: winnerData, error: winnerError } = await supabase
+          .from("users")
+          .select("id, display_name")
+          .eq("id", lastCompletedMatch.winner_id)
+          .single();
+
+        if (winnerError) {
+          console.error("Error fetching winner details:", winnerError);
+          alert("Error fetching winner details: " + winnerError.message);
+          return;
+        }
+
+        console.log("Winner data:", winnerData);
+
+        // Update tournament status and winner
+        const { error: tournamentError } = await supabase
+          .from("tournaments")
+          .update({
+            status: "completed",
+            winner_id: lastCompletedMatch.winner_id,
+          })
+          .eq("id", params.id);
+
+        if (tournamentError) {
+          console.error("Error updating tournament:", tournamentError);
+          alert("Error updating tournament: " + tournamentError.message);
+          return;
+        }
+
+        console.log("Tournament status force updated successfully");
+
+        // Update tournament state
+        setTournament((prev) =>
+          prev
+            ? {
+                ...prev,
+                status: "completed",
+                winner_id: lastCompletedMatch.winner_id,
+                winner: {
+                  id: winnerData.id,
+                  display_name: winnerData.display_name,
+                  email: "",
+                  role: "player" as const,
+                  avatar_url: null,
+                  created_at: "",
+                  updated_at: "",
+                } as User,
+              }
+            : null
+        );
+
+        // Refresh tournament data
+        await fetchTournamentAndBracket();
+
+        alert(
+          `Tournament status updated to completed! Winner: ${winnerData.display_name}`
+        );
+      } else {
+        console.log("No winner found in last completed match");
+        alert("No winner found in last completed match");
+      }
+    } catch (error) {
+      console.error("Error in force update:", error);
+      alert(
+        "Error updating tournament status: " +
+          (error instanceof Error ? error.message : "Unknown error")
+      );
     }
   };
 
@@ -1302,6 +1708,43 @@ export default function TournamentBracketPage() {
               </Button>
             </CardContent>
           </Card>
+        )}
+
+        {/* Admin Tools */}
+        {isAdmin() && (
+          <Card className="mt-6">
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <Settings className="h-5 w-5" />
+                Admin Tools
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <Button
+                onClick={forceUpdateTournamentStatus}
+                variant="outline"
+                className="w-full"
+              >
+                Force Update Tournament Status
+              </Button>
+              <p className="text-sm text-muted-foreground">
+                Use this button if the tournament status is not updating
+                correctly.
+              </p>
+            </CardContent>
+          </Card>
+        )}
+
+        {/* Tournament Chat */}
+        {user && (
+          <div className="mt-6">
+            <TournamentChat
+              tournamentId={params.id as string}
+              currentUserId={user.id}
+              currentUsername={user.display_name || "Anonymous"}
+              currentUserAvatar={user.avatar_url || undefined}
+            />
+          </div>
         )}
 
         {/* Error Display */}
