@@ -99,39 +99,51 @@ export function PWAInstaller() {
   }, [isInstalled, deferredPrompt]);
 
   const handleInstallClick = async () => {
+    // Try automatic installation first
+    if (deferredPrompt) {
+      try {
+        deferredPrompt.prompt();
+        const { outcome } = await deferredPrompt.userChoice;
+
+        if (outcome === "accepted") {
+          console.log("User accepted the install prompt");
+          setIsInstalled(true);
+          setShowInstallPrompt(false);
+        } else {
+          console.log("User dismissed the install prompt");
+          // If user dismisses, show manual instructions
+          showManualInstallInstructions();
+        }
+
+        setDeferredPrompt(null);
+      } catch (error) {
+        console.error("Installation failed:", error);
+        showManualInstallInstructions();
+      }
+    } else {
+      // No automatic prompt available, show manual instructions
+      showManualInstallInstructions();
+    }
+  };
+
+  const showManualInstallInstructions = () => {
     const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent);
     const isAndroid = /Android/.test(navigator.userAgent);
 
-    // For iOS, show instructions
     if (isIOS) {
       alert(
         "To install Bolobey:\n1. Tap the Share button (square with arrow)\n2. Scroll down and tap 'Add to Home Screen'\n3. Tap 'Add' to install"
       );
-      setShowInstallPrompt(false);
-      return;
-    }
-
-    // For Android with beforeinstallprompt
-    if (deferredPrompt) {
-      deferredPrompt.prompt();
-      const { outcome } = await deferredPrompt.userChoice;
-
-      if (outcome === "accepted") {
-        console.log("User accepted the install prompt");
-        setIsInstalled(true);
-      } else {
-        console.log("User dismissed the install prompt");
-      }
-
-      setDeferredPrompt(null);
-      setShowInstallPrompt(false);
-    } else {
-      // For Android without beforeinstallprompt, show instructions
+    } else if (isAndroid) {
       alert(
         "To install Bolobey:\n1. Tap the menu (three dots)\n2. Tap 'Add to Home screen' or 'Install app'\n3. Tap 'Add' to install"
       );
-      setShowInstallPrompt(false);
+    } else {
+      alert(
+        "To install Bolobey:\n1. Look for the install icon in your browser's address bar\n2. Click 'Install' or 'Add to Home Screen'"
+      );
     }
+    setShowInstallPrompt(false);
   };
 
   const handleDismiss = () => {
