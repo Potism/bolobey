@@ -1,6 +1,16 @@
-# Bolobey - Beyblade Tournament Management System
+# 🚀 Bolobey V2 - Tournament Management Platform
 
-A modern, full-stack web application for managing Beyblade tournaments with user authentication, bracket generation, and player statistics tracking.
+A **real-time tournament management platform** that transforms how you organize and experience Beyblade tournaments. With cutting-edge features like live scoring, real-time chat, and mobile app capabilities, V2 delivers a professional tournament experience that rivals native mobile apps.
+
+## ✨ **V2 Features**
+
+- 🎮 **Live Tournament Dashboard** - Real-time tournament progress tracking
+- ⚡ **Real-time Match Scoring** - Instant score synchronization across all devices
+- 🏆 **Enhanced Bracket Visualization** - Interactive tournament brackets with live updates
+- 💬 **Tournament Chat System** - Real-time messaging for participants and spectators
+- 📱 **Progressive Web App (PWA)** - Install as native app with offline support
+- 🔔 **Push Notifications** - Real-time tournament updates
+- 🎨 **Modern UI/UX** - Beautiful animations and responsive design
 
 ## 🚀 Features
 
@@ -21,20 +31,32 @@ A modern, full-stack web application for managing Beyblade tournaments with user
   - Loading states and error handling
   - Beyblade-themed design elements
 
-### 🚧 Coming Next (v2)
+### ✅ **V2 Complete!**
 
-- Bracket generation and visualization
-- Match result management
-- Player statistics dashboard
-- Tournament joining functionality
-- Leaderboards and rankings
+- **Live Tournament Dashboard** - Real-time tournament progress tracking
+- **Real-time Match Scoring** - Instant score synchronization across all devices
+- **Enhanced Bracket Visualization** - Interactive tournament brackets with live updates
+- **Tournament Chat System** - Real-time messaging for participants and spectators
+- **Progressive Web App (PWA)** - Install as native app with offline support
+- **Push Notifications** - Real-time tournament updates
+
+## 🎮 **Try V2 Demo**
+
+Experience all the new V2 features at: **`http://localhost:3000/demo`**
+
+- **Live Scoring**: Real-time match scoring with instant updates
+- **Enhanced Bracket**: Interactive tournament bracket visualization
+- **Live Dashboard**: Real-time tournament progress tracking
+- **Tournament Chat**: Real-time messaging for participants
 
 ## 🛠 Tech Stack
 
-- **Frontend**: Next.js 15, React 19, TypeScript
-- **Styling**: Tailwind CSS 4.0
-- **Database**: Supabase (PostgreSQL)
-- **Authentication**: Supabase Auth
+- **Frontend**: Next.js 15, React 18, TypeScript
+- **Styling**: Tailwind CSS, Framer Motion
+- **Backend**: Supabase (PostgreSQL, Auth, Real-time)
+- **Real-time**: Socket.IO, WebSocket
+- **PWA**: Service Worker, Web App Manifest
+- **UI Components**: Radix UI, Shadcn/ui
 - **Icons**: Lucide React
 - **Deployment**: Vercel
 
@@ -70,13 +92,19 @@ NEXT_PUBLIC_SUPABASE_URL=your_supabase_project_url
 NEXT_PUBLIC_SUPABASE_ANON_KEY=your_supabase_anon_key
 ```
 
-### 4. Run Development Server
+### 4. Run Development Servers
 
 ```bash
+# Terminal 1: Next.js App
 npm run dev
+
+# Terminal 2: WebSocket Server (for real-time features)
+npm run dev:realtime
 ```
 
 Visit [http://localhost:3000](http://localhost:3000) to see your application!
+
+**V2 Demo**: Visit [http://localhost:3000/demo](http://localhost:3000/demo) to experience all V2 features!
 
 **Default Admin Credentials:**
 
@@ -223,4 +251,5 @@ If you encounter any issues:
 ---
 
 Built with ❤️ for the Beyblade community!
+
 # bolobey

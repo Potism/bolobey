@@ -1,26 +1,21 @@
 "use client";
 
 import { useState } from "react";
+import { motion, AnimatePresence } from "framer-motion";
 import { Button } from "@/components/ui/button";
+
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
-import {
-  User,
-  Trophy,
-  Edit,
-  Target,
-  RotateCcw,
-  Crown,
-  Flame,
-} from "lucide-react";
-import { BracketMatch, BattleResult, TournamentBracket } from "@/lib/types";
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { Trophy, Zap, Target, TrendingUp, X, Calculator } from "lucide-react";
+import { TournamentBracket, BracketMatch, BattleResult } from "@/lib/types";
 
 interface BracketVisualizationProps {
   bracket: TournamentBracket;
@@ -41,46 +36,77 @@ export function BracketVisualization({
   onMatchUpdate,
 }: BracketVisualizationProps) {
   const [selectedMatch, setSelectedMatch] = useState<BracketMatch | null>(null);
-  const [player1Score, setPlayer1Score] = useState(0);
-  const [player2Score, setPlayer2Score] = useState(0);
-  const [winnerId, setWinnerId] = useState("");
+  const [winnerId, setWinnerId] = useState<string>("");
   const [isUpdating, setIsUpdating] = useState(false);
   const [battles, setBattles] = useState<BattleResult[]>([]);
-  const [currentBattle, setCurrentBattle] = useState<BattleResult>({
-    winner_id: "",
-    finish_type: "burst",
-    player1_points: 0,
-    player2_points: 0,
-  });
+
+  // Quick score entry state
+  const [player1QuickScore, setPlayer1QuickScore] = useState(0);
+  const [player2QuickScore, setPlayer2QuickScore] = useState(0);
+  const [useQuickScore, setUseQuickScore] = useState(false);
+
+  // Separate state for each point type to avoid the sharing issue
+  const [player1Burst, setPlayer1Burst] = useState(0);
+  const [player1Ringout, setPlayer1Ringout] = useState(0);
+  const [player1Spinout, setPlayer1Spinout] = useState(0);
+  const [player2Burst, setPlayer2Burst] = useState(0);
+  const [player2Ringout, setPlayer2Ringout] = useState(0);
+  const [player2Spinout, setPlayer2Spinout] = useState(0);
+  const [currentFinishType, setCurrentFinishType] = useState<
+    "burst" | "ringout" | "spinout"
+  >("burst");
 
   const handleMatchClick = (match: BracketMatch) => {
-    if (!isAdmin || match.status === "completed") return;
-    setSelectedMatch(match);
-    setPlayer1Score(match.player1_score || 0);
-    setPlayer2Score(match.player2_score || 0);
-    setWinnerId(match.winner?.id || "");
-    setBattles([]);
-    setCurrentBattle({
-      winner_id: "",
-      finish_type: "burst",
-      player1_points: 0,
-      player2_points: 0,
-    });
+    if (isAdmin && match.status !== "completed") {
+      setSelectedMatch(match);
+      setWinnerId("");
+      setBattles([]);
+      setUseQuickScore(false);
+      // Reset all point inputs
+      setPlayer1QuickScore(0);
+      setPlayer2QuickScore(0);
+      setPlayer1Burst(0);
+      setPlayer1Ringout(0);
+      setPlayer1Spinout(0);
+      setPlayer2Burst(0);
+      setPlayer2Ringout(0);
+      setPlayer2Spinout(0);
+      setCurrentFinishType("burst");
+    }
   };
 
   const handleScoreUpdate = async () => {
-    if (!selectedMatch || !onMatchUpdate) return;
+    if (!selectedMatch || !winnerId || !onMatchUpdate) return;
+
     setIsUpdating(true);
     try {
+      let player1Total, player2Total;
+
+      if (useQuickScore) {
+        // Use quick score entry
+        player1Total = player1QuickScore;
+        player2Total = player2QuickScore;
+      } else {
+        // Calculate total points from battle breakdown
+        player1Total =
+          player1Burst * 3 + player1Ringout * 2 + player1Spinout * 1;
+        player2Total =
+          player2Burst * 3 + player2Ringout * 2 + player2Spinout * 1;
+      }
+
       await onMatchUpdate(
         selectedMatch.round,
         selectedMatch.match_number,
         winnerId,
-        player1Score,
-        player2Score,
-        battles
+        player1Total,
+        player2Total,
+        useQuickScore ? undefined : battles
       );
+
       setSelectedMatch(null);
+      setWinnerId("");
+      setBattles([]);
+      setUseQuickScore(false);
     } catch (error) {
       console.error("Error updating match:", error);
     } finally {
@@ -89,14 +115,28 @@ export function BracketVisualization({
   };
 
   const addBattle = () => {
-    if (!currentBattle.winner_id || !currentBattle.finish_type) return;
-    setBattles([...battles, currentBattle]);
-    setCurrentBattle({
-      winner_id: "",
-      finish_type: "burst",
-      player1_points: 0,
-      player2_points: 0,
-    });
+    if (!winnerId) return;
+
+    // Create a battle result based on the current finish type and points
+    const newBattle: BattleResult = {
+      winner_id: winnerId,
+      finish_type: currentFinishType,
+      player1_points:
+        player1Burst * 3 + player1Ringout * 2 + player1Spinout * 1,
+      player2_points:
+        player2Burst * 3 + player2Ringout * 2 + player2Spinout * 1,
+    };
+
+    setBattles([...battles, newBattle]);
+
+    // Reset inputs after adding battle
+    setPlayer1Burst(0);
+    setPlayer1Ringout(0);
+    setPlayer1Spinout(0);
+    setPlayer2Burst(0);
+    setPlayer2Ringout(0);
+    setPlayer2Spinout(0);
+    setCurrentFinishType("burst");
   };
 
   const removeBattle = (index: number) => {
@@ -105,109 +145,77 @@ export function BracketVisualization({
 
   const getMatchStatus = (match: BracketMatch) => {
     if (match.status === "completed") return "completed";
-    if (match.player1 && match.player2) return "ready";
+    if (match.status === "in_progress") return "in_progress";
     return "pending";
   };
 
   const getMatchCard = (match: BracketMatch) => {
     const status = getMatchStatus(match);
-    const isCompleted = status === "completed";
-    const isReady = status === "ready";
+    const isClickable = isAdmin && status !== "completed";
 
     return (
-      <div
-        key={match.id}
-        className={`
-          relative w-80 h-40 rounded-lg border-2 transition-all duration-200 cursor-pointer
-          ${
-            isCompleted
-              ? "bg-success/10 text-success-foreground border-success shadow-sm"
-              : isReady
-              ? "bg-background text-foreground border-border hover:border-primary hover:shadow-md"
-              : "bg-muted text-muted-foreground border-border"
-          }
-        `}
+      <motion.div
+        key={`${match.round}-${match.match_number}`}
+        className={`relative p-4 border rounded-lg cursor-pointer transition-all duration-200 ${
+          isClickable
+            ? "hover:shadow-lg hover:scale-105 bg-white dark:bg-slate-800"
+            : "bg-gray-50 dark:bg-slate-700"
+        } ${
+          status === "completed"
+            ? "border-green-500"
+            : "border-gray-300 dark:border-slate-600"
+        }`}
         onClick={() => handleMatchClick(match)}
+        whileHover={isClickable ? { scale: 1.02 } : {}}
+        transition={{ duration: 0.2 }}
       >
-        {/* Match Number Badge */}
-        <div className="absolute -top-3 -left-3">
+        <div className="flex items-center justify-between mb-2">
           <Badge
-            variant="secondary"
-            className={`
-              text-xs font-bold px-2 py-1 rounded-full
-              ${
-                isCompleted
-                  ? "bg-success/20 text-success-foreground"
-                  : "bg-muted text-muted-foreground"
-              }
-            `}
+            variant={status === "completed" ? "default" : "secondary"}
+            className={`text-xs ${
+              status === "completed"
+                ? "bg-green-500 text-white"
+                : status === "in_progress"
+                ? "bg-blue-500 text-white"
+                : "bg-gray-500 text-white"
+            }`}
           >
-            {match.bracket_type === "upper"
-              ? "U"
-              : match.bracket_type === "lower"
-              ? "L"
-              : "F"}
-            -{match.round}.{match.match_number}
+            {status === "completed"
+              ? "Completed"
+              : status === "in_progress"
+              ? "In Progress"
+              : "Pending"}
           </Badge>
+          <span className="text-xs text-muted-foreground">
+            Round {match.round}, Match {match.match_number}
+          </span>
         </div>
 
-        {/* Status Badge */}
-        <div className="absolute -top-3 -right-3">
-          <Badge
-            className={`
-              text-xs font-bold px-2 py-1 rounded-full
-              ${
-                isCompleted
-                  ? "bg-success text-white"
-                  : isReady
-                  ? "bg-muted text-muted-foreground"
-                  : "bg-muted text-muted-foreground"
-              }
-            `}
-          >
-            {isCompleted ? "Completed" : isReady ? "Ready" : "Pending"}
-          </Badge>
-        </div>
-
-        {/* Edit Button for Ready Matches */}
-        {isReady && isAdmin && (
-          <div className="absolute top-2 right-2">
-            <Button
-              size="sm"
-              variant="outline"
-              className="w-8 h-8 p-0 rounded-full bg-background/80 border-2 hover:bg-background dark:hover:bg-slate-800"
-            >
-              <Edit className="w-4 h-4" />
-            </Button>
-          </div>
-        )}
-
-        {/* Player Slots */}
-        <div className="p-4 space-y-3">
+        <div className="space-y-2">
           <PlayerSlot
             player={match.player1}
             score={match.player1_score}
             isWinner={match.winner?.id === match.player1?.id}
-            isCompleted={isCompleted}
+            isCompleted={status === "completed"}
           />
+          <div className="text-center text-xs text-muted-foreground">vs</div>
           <PlayerSlot
             player={match.player2}
             score={match.player2_score}
             isWinner={match.winner?.id === match.player2?.id}
-            isCompleted={isCompleted}
+            isCompleted={status === "completed"}
           />
         </div>
 
-        {/* Winner Indicator */}
-        {isCompleted && match.winner && (
-          <div className="absolute -bottom-2 left-1/2 transform -translate-x-1/2">
-            <div className="bg-success text-white px-3 py-1 rounded-full text-xs font-bold flex items-center gap-1">
-              <Crown className="w-3 h-3" />
-              {match.winner.display_name}
+        {match.winner && (
+          <div className="mt-2 pt-2 border-t border-gray-200 dark:border-slate-600">
+            <div className="flex items-center gap-1 text-xs text-green-600 dark:text-green-400">
+              <Trophy className="h-3 w-3" />
+              Winner: {match.winner.display_name}
             </div>
           </div>
         )}
-      </div>
+      </motion.div>
     );
   };
 
@@ -216,95 +224,29 @@ export function BracketVisualization({
     title: string,
     bracketType: "upper" | "lower" | "final"
   ) => {
-    const rounds = new Map<number, BracketMatch[]>();
-
-    matches.forEach((match) => {
-      if (!rounds.has(match.round)) {
-        rounds.set(match.round, []);
-      }
-      rounds.get(match.round)!.push(match);
-    });
+    if (matches.length === 0) return null;
 
     const getBracketColor = (type: string) => {
       switch (type) {
         case "upper":
-          return "border-border bg-muted";
+          return "border-blue-500 bg-blue-50 dark:bg-blue-900/20";
         case "lower":
-          return "border-border bg-muted";
+          return "border-purple-500 bg-purple-50 dark:bg-purple-900/20";
         case "final":
-          return "border-border bg-muted";
+          return "border-yellow-500 bg-yellow-50 dark:bg-yellow-900/20";
         default:
-          return "border-border bg-muted";
+          return "border-gray-300 dark:border-gray-600";
       }
     };
 
     return (
-      <div className="space-y-8">
+      <div key={title} className="space-y-4">
+        <h3 className="text-lg font-semibold text-center">{title}</h3>
         <div
-          className={`text-center p-4 rounded-lg border-2 ${getBracketColor(
-            bracketType
-          )}`}
+          className={`p-4 border-2 rounded-lg ${getBracketColor(bracketType)}`}
         >
-          <h3 className="text-xl font-bold text-foreground">{title}</h3>
-        </div>
-
-        <div className="relative">
-          {/* SVG for connecting lines */}
-          <svg
-            className="absolute inset-0 w-full h-full pointer-events-none"
-            style={{ zIndex: 1 }}
-          >
-            {Array.from(rounds.entries()).map(
-              ([round, roundMatches], roundIndex) => {
-                if (roundIndex === rounds.size - 1) return null; // No lines after last round
-
-                const nextRound = Array.from(rounds.entries())[roundIndex + 1];
-                if (!nextRound) return null;
-
-                const nextRoundMatches = nextRound[1];
-
-                return roundMatches.map((match, matchIndex) => {
-                  const nextMatch =
-                    nextRoundMatches[Math.floor(matchIndex / 2)];
-                  if (!nextMatch) return null;
-
-                  // Calculate positions (simplified - you might want to make this more precise)
-                  const currentX = roundIndex * 320 + 160; // 320px per round, 160px center of match
-                  const currentY = matchIndex * 200 + 100; // 200px per match, 100px center of match card
-                  const nextX = (roundIndex + 1) * 320 + 160;
-                  const nextY = Math.floor(matchIndex / 2) * 200 + 100;
-
-                  return (
-                    <line
-                      key={`line-${round}-${matchIndex}`}
-                      x1={currentX}
-                      y1={currentY}
-                      x2={nextX}
-                      y2={nextY}
-                      stroke="#94a3b8"
-                      strokeWidth="2"
-                      strokeDasharray="5,5"
-                      opacity="0.6"
-                    />
-                  );
-                });
-              }
-            )}
-          </svg>
-
-          <div className="flex gap-16 relative" style={{ zIndex: 2 }}>
-            {Array.from(rounds.entries()).map(([round, roundMatches]) => (
-              <div key={round} className="space-y-6">
-                <div className="text-center p-2 bg-muted rounded-lg border border-border">
-                  <h4 className="font-bold text-sm text-muted-foreground">
-                    Round {round}
-                  </h4>
-                </div>
-                <div className="space-y-6">
-                  {roundMatches.map(getMatchCard)}
-                </div>
-              </div>
-            ))}
+          <div className="grid gap-4">
+            {matches.map((match) => getMatchCard(match))}
           </div>
         </div>
       </div>
@@ -312,459 +254,354 @@ export function BracketVisualization({
   };
 
   return (
-    <div className="space-y-12">
-      {/* Upper Bracket */}
-      {bracket.upper_bracket.length > 0 &&
-        getBracketSection(
-          bracket.upper_bracket,
-          "Upper Bracket (Winners)",
-          "upper"
-        )}
-
-      {/* Lower Bracket */}
-      {bracket.lower_bracket.length > 0 &&
-        getBracketSection(
-          bracket.lower_bracket,
-          "Lower Bracket (Losers)",
-          "lower"
-        )}
-
-      {/* Final Matches */}
-      {bracket.final_matches.length > 0 &&
-        getBracketSection(bracket.final_matches, "Grand Finals", "final")}
-
-      {/* Bracket Structure Explanation */}
-      <div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg p-4">
-        <h3 className="font-bold text-blue-800 dark:text-blue-200 mb-2">
-          🏆 Tournament Bracket Structure
-        </h3>
-        <div className="text-sm text-blue-700 dark:text-blue-300 space-y-1">
-          <p>
-            • <strong>Upper Bracket:</strong> Winners advance, losers drop to
-            Lower Bracket
-          </p>
-          <p>
-            • <strong>Lower Bracket:</strong> Losers from Upper + losers from
-            Lower (double elimination)
-          </p>
-          <p>
-            • <strong>Grand Finals:</strong> Upper Bracket winner vs Lower
-            Bracket winner
-          </p>
-          <p>
-            • <strong>Click on matches</strong> to record results and advance
-            players
-          </p>
-        </div>
+    <div className="space-y-8">
+      {/* Bracket Sections */}
+      <div className="grid gap-8">
+        {bracket.upper_bracket.length > 0 &&
+          getBracketSection(bracket.upper_bracket, "Upper Bracket", "upper")}
+        {bracket.lower_bracket.length > 0 &&
+          getBracketSection(bracket.lower_bracket, "Lower Bracket", "lower")}
+        {bracket.final_matches.length > 0 &&
+          getBracketSection(bracket.final_matches, "Finals", "final")}
       </div>
 
-      {/* Enhanced Match Update Dialog */}
-      <Dialog
-        open={!!selectedMatch}
-        onOpenChange={() => setSelectedMatch(null)}
-      >
-        <DialogContent className="max-w-[95vw] sm:max-w-2xl md:max-w-3xl lg:max-w-4xl max-h-[90vh] overflow-y-auto bg-background border-2 border-border shadow-2xl mx-2 sm:mx-4 p-0">
-          <DialogHeader className="pb-4 px-4 sm:px-6 pt-4 sm:pt-6">
-            <DialogTitle className="text-xl sm:text-2xl font-bold text-center">
-              Update Match Result - Beyblade X
-            </DialogTitle>
-          </DialogHeader>
-          {selectedMatch && (
-            <div className="space-y-6 sm:space-y-8 px-4 sm:px-6 pb-4 sm:pb-6">
-              {/* Match Info */}
-              <div className="text-center p-4 sm:p-6 bg-muted rounded-lg border border-border">
-                <p className="text-xs sm:text-sm text-muted-foreground font-medium">
-                  {selectedMatch.bracket_type === "upper"
-                    ? "Upper Bracket"
-                    : selectedMatch.bracket_type === "lower"
-                    ? "Lower Bracket"
-                    : "Grand Final"}
-                </p>
-                <p className="text-base sm:text-lg font-bold text-foreground">
-                  Round {selectedMatch.round} - Match{" "}
-                  {selectedMatch.match_number}
-                </p>
+      {/* Match Update Modal */}
+      <AnimatePresence>
+        {selectedMatch && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50"
+            onClick={() => setSelectedMatch(null)}
+          >
+            <motion.div
+              initial={{ scale: 0.9, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.9, opacity: 0 }}
+              className="bg-white dark:bg-slate-900 rounded-lg p-6 w-full max-w-2xl max-h-[90vh] overflow-y-auto"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className="flex items-center justify-between mb-4">
+                <h2 className="text-xl font-bold">Update Match Score</h2>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => setSelectedMatch(null)}
+                >
+                  <X className="h-4 w-4" />
+                </Button>
               </div>
 
-              {/* Players and Basic Scores */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 sm:gap-6 lg:gap-8">
-                <div className="space-y-3 sm:space-y-4">
-                  <div className="text-center">
-                    <Label className="text-sm font-medium text-muted-foreground">
-                      Player 1
-                    </Label>
-                    <p className="font-bold text-lg sm:text-xl mt-1 sm:mt-2 text-foreground break-words">
-                      {selectedMatch.player1?.display_name}
-                    </p>
+              {/* Match Info */}
+              <div className="mb-6 p-4 bg-gray-50 dark:bg-slate-800 rounded-lg">
+                <div className="text-center">
+                  <div className="text-lg font-semibold">
+                    {selectedMatch.player1?.display_name} vs{" "}
+                    {selectedMatch.player2?.display_name}
                   </div>
-                  <Input
-                    type="number"
-                    min="0"
-                    value={player1Score}
-                    onChange={(e) =>
-                      setPlayer1Score(parseInt(e.target.value) || 0)
-                    }
-                    className="text-center text-lg sm:text-xl font-mono font-bold h-10 sm:h-12"
-                    placeholder="0"
-                  />
+                  <div className="text-sm text-muted-foreground">
+                    Round {selectedMatch.round}, Match{" "}
+                    {selectedMatch.match_number}
+                  </div>
+                </div>
+              </div>
+
+              {/* Winner Selection */}
+              <div className="mb-6">
+                <Label className="text-sm font-medium">Select Winner</Label>
+                <div className="flex gap-2 mt-2">
                   <Button
                     variant={
                       winnerId === selectedMatch.player1?.id
                         ? "default"
                         : "outline"
                     }
-                    size="lg"
                     onClick={() => setWinnerId(selectedMatch.player1?.id || "")}
-                    className="w-full h-10 sm:h-12 text-sm sm:text-base"
+                    className="flex-1"
                   >
-                    {winnerId === selectedMatch.player1?.id ? (
-                      <>
-                        <Trophy className="w-4 h-4 sm:w-5 sm:h-5 mr-1 sm:mr-2" />
-                        Winner
-                      </>
-                    ) : (
-                      "Select Winner"
-                    )}
+                    {selectedMatch.player1?.display_name}
                   </Button>
-                </div>
-
-                <div className="space-y-3 sm:space-y-4">
-                  <div className="text-center">
-                    <Label className="text-sm font-medium text-muted-foreground">
-                      Player 2
-                    </Label>
-                    <p className="font-bold text-lg sm:text-xl mt-1 sm:mt-2 text-foreground break-words">
-                      {selectedMatch.player2?.display_name}
-                    </p>
-                  </div>
-                  <Input
-                    type="number"
-                    min="0"
-                    value={player2Score}
-                    onChange={(e) =>
-                      setPlayer2Score(parseInt(e.target.value) || 0)
-                    }
-                    className="text-center text-lg sm:text-xl font-mono font-bold h-10 sm:h-12"
-                    placeholder="0"
-                  />
                   <Button
                     variant={
                       winnerId === selectedMatch.player2?.id
                         ? "default"
                         : "outline"
                     }
-                    size="lg"
                     onClick={() => setWinnerId(selectedMatch.player2?.id || "")}
-                    className="w-full h-10 sm:h-12 text-sm sm:text-base"
+                    className="flex-1"
                   >
-                    {winnerId === selectedMatch.player2?.id ? (
-                      <>
-                        <Trophy className="w-4 h-4 sm:w-5 sm:h-5 mr-1 sm:mr-2" />
-                        Winner
-                      </>
-                    ) : (
-                      "Select Winner"
-                    )}
+                    {selectedMatch.player2?.display_name}
                   </Button>
                 </div>
               </div>
 
-              {/* Battle Details */}
-              <div className="space-y-4">
-                <h4 className="text-lg font-bold text-center">
-                  Battle Details
-                </h4>
-
-                {/* Current Battle Input */}
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 p-3 sm:p-4 bg-muted rounded-lg">
-                  <div className="space-y-2">
-                    <Label className="text-sm font-medium text-muted-foreground">
-                      Battle Winner
-                    </Label>
-                    <div className="flex flex-col sm:flex-row gap-2">
-                      <Button
-                        size="sm"
-                        variant={
-                          currentBattle.winner_id === selectedMatch.player1?.id
-                            ? "default"
-                            : "outline"
-                        }
-                        onClick={() =>
-                          setCurrentBattle({
-                            ...currentBattle,
-                            winner_id: selectedMatch.player1?.id || "",
-                          })
-                        }
-                        className="flex-1 text-xs sm:text-sm"
-                      >
-                        <span className="truncate">
-                          {selectedMatch.player1?.display_name}
-                        </span>
-                      </Button>
-                      <Button
-                        size="sm"
-                        variant={
-                          currentBattle.winner_id === selectedMatch.player2?.id
-                            ? "default"
-                            : "outline"
-                        }
-                        onClick={() =>
-                          setCurrentBattle({
-                            ...currentBattle,
-                            winner_id: selectedMatch.player2?.id || "",
-                          })
-                        }
-                        className="flex-1 text-xs sm:text-sm"
-                      >
-                        <span className="truncate">
-                          {selectedMatch.player2?.display_name}
-                        </span>
-                      </Button>
-                    </div>
-                  </div>
-
-                  <div className="space-y-2">
-                    <Label className="text-sm font-medium text-muted-foreground">
-                      Finish Type
-                    </Label>
-                    <div className="flex flex-col sm:flex-row gap-1">
-                      <Button
-                        size="sm"
-                        variant={
-                          currentBattle.finish_type === "burst"
-                            ? "default"
-                            : "outline"
-                        }
-                        onClick={() =>
-                          setCurrentBattle({
-                            ...currentBattle,
-                            finish_type: "burst",
-                          })
-                        }
-                        className="flex-1 text-xs sm:text-sm"
-                      >
-                        <Flame className="w-3 h-3 mr-1" />
-                        Burst
-                      </Button>
-                      <Button
-                        size="sm"
-                        variant={
-                          currentBattle.finish_type === "ringout"
-                            ? "default"
-                            : "outline"
-                        }
-                        onClick={() =>
-                          setCurrentBattle({
-                            ...currentBattle,
-                            finish_type: "ringout",
-                          })
-                        }
-                        className="flex-1 text-xs sm:text-sm"
-                      >
-                        <Target className="w-3 h-3 mr-1" />
-                        Ring-Out
-                      </Button>
-                      <Button
-                        size="sm"
-                        variant={
-                          currentBattle.finish_type === "spinout"
-                            ? "default"
-                            : "outline"
-                        }
-                        onClick={() =>
-                          setCurrentBattle({
-                            ...currentBattle,
-                            finish_type: "spinout",
-                          })
-                        }
-                        className="flex-1 text-xs sm:text-sm"
-                      >
-                        <RotateCcw className="w-3 h-3 mr-1" />
-                        Spin-Out
-                      </Button>
-                    </div>
-                  </div>
+              {/* Quick Score Entry Section */}
+              <div className="mb-6 p-4 border border-blue-200 dark:border-blue-800 rounded-lg bg-blue-50 dark:bg-blue-900/20">
+                <div className="flex items-center gap-2 mb-3">
+                  <Calculator className="h-4 w-4 text-blue-600 dark:text-blue-400" />
+                  <Label className="text-sm font-medium text-blue-800 dark:text-blue-200">
+                    Quick Score Entry
+                  </Label>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => setUseQuickScore(!useQuickScore)}
+                    className={`ml-auto text-xs ${
+                      useQuickScore
+                        ? "bg-blue-200 dark:bg-blue-800 text-blue-800 dark:text-blue-200"
+                        : "text-blue-600 dark:text-blue-400"
+                    }`}
+                  >
+                    {useQuickScore ? "Using Quick Score" : "Enable Quick Score"}
+                  </Button>
                 </div>
 
-                {/* Battle Points */}
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                  <div className="space-y-2">
-                    <Label className="text-sm font-medium text-muted-foreground">
-                      <span className="truncate">
-                        {selectedMatch.player1?.display_name}
-                      </span>{" "}
-                      Points
-                    </Label>
-                    <div className="grid grid-cols-3 gap-1 sm:gap-2">
-                      <div>
-                        <Label className="text-xs text-muted-foreground">
-                          Bursts (3pts)
-                        </Label>
-                        <Input
-                          type="number"
-                          min="0"
-                          value={currentBattle.player1_points}
-                          onChange={(e) =>
-                            setCurrentBattle({
-                              ...currentBattle,
-                              player1_points: parseInt(e.target.value) || 0,
-                            })
-                          }
-                          className="text-center h-8 sm:h-10 text-xs sm:text-sm"
-                        />
-                      </div>
-                      <div>
-                        <Label className="text-xs text-muted-foreground">
-                          Ring-Outs (2pts)
-                        </Label>
-                        <Input
-                          type="number"
-                          min="0"
-                          value={currentBattle.player1_points}
-                          onChange={(e) =>
-                            setCurrentBattle({
-                              ...currentBattle,
-                              player1_points: parseInt(e.target.value) || 0,
-                            })
-                          }
-                          className="text-center h-8 sm:h-10 text-xs sm:text-sm"
-                        />
-                      </div>
-                      <div>
-                        <Label className="text-xs text-muted-foreground">
-                          Spin-Outs (1pt)
-                        </Label>
-                        <Input
-                          type="number"
-                          min="0"
-                          value={currentBattle.player1_points}
-                          onChange={(e) =>
-                            setCurrentBattle({
-                              ...currentBattle,
-                              player1_points: parseInt(e.target.value) || 0,
-                            })
-                          }
-                          className="text-center h-8 sm:h-10 text-xs sm:text-sm"
-                        />
-                      </div>
+                {useQuickScore && (
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <Label className="text-xs text-muted-foreground">
+                        {selectedMatch.player1?.display_name} Total Score
+                      </Label>
+                      <Input
+                        type="number"
+                        min="0"
+                        value={player1QuickScore}
+                        onChange={(e) =>
+                          setPlayer1QuickScore(parseInt(e.target.value) || 0)
+                        }
+                        className="text-center h-10"
+                        placeholder="0"
+                      />
+                    </div>
+                    <div>
+                      <Label className="text-xs text-muted-foreground">
+                        {selectedMatch.player2?.display_name} Total Score
+                      </Label>
+                      <Input
+                        type="number"
+                        min="0"
+                        value={player2QuickScore}
+                        onChange={(e) =>
+                          setPlayer2QuickScore(parseInt(e.target.value) || 0)
+                        }
+                        className="text-center h-10"
+                        placeholder="0"
+                      />
                     </div>
                   </div>
+                )}
+              </div>
 
-                  <div className="space-y-2">
-                    <Label className="text-sm font-medium text-muted-foreground">
-                      <span className="truncate">
-                        {selectedMatch.player2?.display_name}
-                      </span>{" "}
-                      Points
-                    </Label>
-                    <div className="grid grid-cols-3 gap-1 sm:gap-2">
-                      <div>
-                        <Label className="text-xs text-muted-foreground">
-                          Bursts (3pts)
-                        </Label>
-                        <Input
-                          type="number"
-                          min="0"
-                          value={currentBattle.player2_points}
-                          onChange={(e) =>
-                            setCurrentBattle({
-                              ...currentBattle,
-                              player2_points: parseInt(e.target.value) || 0,
-                            })
-                          }
-                          className="text-center h-8 sm:h-10 text-xs sm:text-sm"
-                        />
-                      </div>
-                      <div>
-                        <Label className="text-xs text-muted-foreground">
-                          Ring-Outs (2pts)
-                        </Label>
-                        <Input
-                          type="number"
-                          min="0"
-                          value={currentBattle.player2_points}
-                          onChange={(e) =>
-                            setCurrentBattle({
-                              ...currentBattle,
-                              player2_points: parseInt(e.target.value) || 0,
-                            })
-                          }
-                          className="text-center h-8 sm:h-10 text-xs sm:text-sm"
-                        />
-                      </div>
-                      <div>
-                        <Label className="text-xs text-muted-foreground">
-                          Spin-Outs (1pt)
-                        </Label>
-                        <Input
-                          type="number"
-                          min="0"
-                          value={currentBattle.player2_points}
-                          onChange={(e) =>
-                            setCurrentBattle({
-                              ...currentBattle,
-                              player2_points: parseInt(e.target.value) || 0,
-                            })
-                          }
-                          className="text-center h-8 sm:h-10 text-xs sm:text-sm"
-                        />
-                      </div>
-                    </div>
-                  </div>
+              {/* Battle Details Section */}
+              <div className="mb-6">
+                <div className="flex items-center gap-2 mb-3">
+                  <Target className="h-4 w-4 text-purple-600 dark:text-purple-400" />
+                  <Label className="text-sm font-medium text-purple-800 dark:text-purple-200">
+                    Battle Details (Optional)
+                  </Label>
+                  {!useQuickScore && (
+                    <Badge variant="secondary" className="text-xs">
+                      Active
+                    </Badge>
+                  )}
                 </div>
 
-                <Button
-                  onClick={addBattle}
-                  disabled={
-                    !currentBattle.winner_id || !currentBattle.finish_type
-                  }
-                  className="w-full h-10 sm:h-12 text-sm sm:text-base"
-                >
-                  Add Battle
-                </Button>
-
-                {/* Battle List */}
-                {battles.length > 0 && (
-                  <div className="space-y-2">
-                    <Label className="text-sm font-medium text-muted-foreground">
-                      Battles Added
-                    </Label>
-                    <div className="space-y-2 max-h-32 overflow-y-auto">
-                      {battles.map((battle, index) => (
-                        <div
-                          key={index}
-                          className="flex flex-col sm:flex-row items-start sm:items-center justify-between p-2 bg-muted rounded gap-2"
-                        >
-                          <span className="text-xs sm:text-sm flex-1">
-                            Battle {index + 1}:{" "}
-                            <span className="font-medium">
-                              {battle.winner_id === selectedMatch.player1?.id
-                                ? selectedMatch.player1?.display_name
-                                : selectedMatch.player2?.display_name}
-                            </span>{" "}
-                            wins by{" "}
-                            <span className="font-medium">
-                              {battle.finish_type}
-                            </span>
-                          </span>
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            onClick={() => removeBattle(index)}
-                            className="text-xs h-8 px-2"
-                          >
-                            Remove
-                          </Button>
+                {!useQuickScore && (
+                  <div className="space-y-4">
+                    {/* Points Input */}
+                    <div className="grid grid-cols-2 gap-4">
+                      {/* Player 1 Points */}
+                      <div className="space-y-2">
+                        <Label className="text-sm font-medium text-muted-foreground">
+                          {selectedMatch.player1?.display_name} Points
+                        </Label>
+                        <div className="grid grid-cols-3 gap-2">
+                          <div>
+                            <Label className="text-xs text-muted-foreground">
+                              Bursts (3pts)
+                            </Label>
+                            <Input
+                              type="number"
+                              min="0"
+                              value={player1Burst}
+                              onChange={(e) =>
+                                setPlayer1Burst(parseInt(e.target.value) || 0)
+                              }
+                              className="text-center h-8 sm:h-10 text-xs sm:text-sm"
+                            />
+                          </div>
+                          <div>
+                            <Label className="text-xs text-muted-foreground">
+                              Ring-Outs (2pts)
+                            </Label>
+                            <Input
+                              type="number"
+                              min="0"
+                              value={player1Ringout}
+                              onChange={(e) =>
+                                setPlayer1Ringout(parseInt(e.target.value) || 0)
+                              }
+                              className="text-center h-8 sm:h-10 text-xs sm:text-sm"
+                            />
+                          </div>
+                          <div>
+                            <Label className="text-xs text-muted-foreground">
+                              Spin-Outs (1pt)
+                            </Label>
+                            <Input
+                              type="number"
+                              min="0"
+                              value={player1Spinout}
+                              onChange={(e) =>
+                                setPlayer1Spinout(parseInt(e.target.value) || 0)
+                              }
+                              className="text-center h-8 sm:h-10 text-xs sm:text-sm"
+                            />
+                          </div>
                         </div>
-                      ))}
+                      </div>
+
+                      {/* Player 2 Points */}
+                      <div className="space-y-2">
+                        <Label className="text-sm font-medium text-muted-foreground">
+                          {selectedMatch.player2?.display_name} Points
+                        </Label>
+                        <div className="grid grid-cols-3 gap-2">
+                          <div>
+                            <Label className="text-xs text-muted-foreground">
+                              Bursts (3pts)
+                            </Label>
+                            <Input
+                              type="number"
+                              min="0"
+                              value={player2Burst}
+                              onChange={(e) =>
+                                setPlayer2Burst(parseInt(e.target.value) || 0)
+                              }
+                              className="text-center h-8 sm:h-10 text-xs sm:text-sm"
+                            />
+                          </div>
+                          <div>
+                            <Label className="text-xs text-muted-foreground">
+                              Ring-Outs (2pts)
+                            </Label>
+                            <Input
+                              type="number"
+                              min="0"
+                              value={player2Ringout}
+                              onChange={(e) =>
+                                setPlayer2Ringout(parseInt(e.target.value) || 0)
+                              }
+                              className="text-center h-8 sm:h-10 text-xs sm:text-sm"
+                            />
+                          </div>
+                          <div>
+                            <Label className="text-xs text-muted-foreground">
+                              Spin-Outs (1pt)
+                            </Label>
+                            <Input
+                              type="number"
+                              min="0"
+                              value={player2Spinout}
+                              onChange={(e) =>
+                                setPlayer2Spinout(parseInt(e.target.value) || 0)
+                              }
+                              className="text-center h-8 sm:h-10 text-xs sm:text-sm"
+                            />
+                          </div>
+                        </div>
+                      </div>
                     </div>
+
+                    {/* Finish Type Selection */}
+                    <div className="mb-4">
+                      <Label className="text-sm font-medium">Finish Type</Label>
+                      <Select
+                        value={currentFinishType}
+                        onValueChange={(
+                          value: "burst" | "ringout" | "spinout"
+                        ) => setCurrentFinishType(value)}
+                      >
+                        <SelectTrigger className="mt-2">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="burst">
+                            <div className="flex items-center gap-2">
+                              <Zap className="h-4 w-4" />
+                              Burst (3 pts)
+                            </div>
+                          </SelectItem>
+                          <SelectItem value="ringout">
+                            <div className="flex items-center gap-2">
+                              <Target className="h-4 w-4" />
+                              Ring-Out (2 pts)
+                            </div>
+                          </SelectItem>
+                          <SelectItem value="spinout">
+                            <div className="flex items-center gap-2">
+                              <TrendingUp className="h-4 w-4" />
+                              Spin-Out (1 pt)
+                            </div>
+                          </SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+
+                    <Button
+                      onClick={addBattle}
+                      disabled={!winnerId}
+                      className="w-full h-10 sm:h-12 text-sm sm:text-base"
+                    >
+                      Add Battle
+                    </Button>
+
+                    {/* Battle List */}
+                    {battles.length > 0 && (
+                      <div className="space-y-2 mt-4">
+                        <Label className="text-sm font-medium text-muted-foreground">
+                          Battles Added
+                        </Label>
+                        <div className="space-y-2 max-h-32 overflow-y-auto">
+                          {battles.map((battle, index) => (
+                            <div
+                              key={index}
+                              className="flex flex-col sm:flex-row items-start sm:items-center justify-between p-2 bg-muted rounded gap-2"
+                            >
+                              <span className="text-xs sm:text-sm flex-1">
+                                Battle {index + 1}:{" "}
+                                <span className="font-medium">
+                                  {battle.winner_id ===
+                                  selectedMatch.player1?.id
+                                    ? selectedMatch.player1?.display_name
+                                    : selectedMatch.player2?.display_name}
+                                </span>{" "}
+                                wins by{" "}
+                                <span className="font-medium">
+                                  {battle.finish_type}
+                                </span>
+                              </span>
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                onClick={() => removeBattle(index)}
+                                className="text-xs h-8 px-2"
+                              >
+                                Remove
+                              </Button>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
                   </div>
                 )}
               </div>
 
               {/* Instructions */}
               {!winnerId && (
-                <div className="text-center p-3 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg">
+                <div className="text-center p-3 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg mt-4">
                   <p className="text-xs sm:text-sm text-blue-700 dark:text-blue-300 font-medium">
                     💡 Select a winner by clicking the &quot;Select Winner&quot;
                     button above
@@ -800,10 +637,10 @@ export function BracketVisualization({
                   )}
                 </Button>
               </div>
-            </div>
-          )}
-        </DialogContent>
-      </Dialog>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }
@@ -819,67 +656,23 @@ function PlayerSlot({
   isWinner: boolean;
   isCompleted: boolean;
 }) {
-  if (!player) {
-    return (
-      <div className="flex items-center justify-between p-3 rounded-lg bg-muted/30 border border-border/50">
-        <div className="flex items-center gap-3">
-          <div className="w-8 h-8 rounded-full bg-muted flex items-center justify-center">
-            <User className="h-4 w-4 text-muted-foreground" />
-          </div>
-          <span className="text-sm text-muted-foreground font-medium">TBD</span>
-        </div>
-        <span className="text-sm text-muted-foreground font-mono">-</span>
-      </div>
-    );
-  }
-
   return (
     <div
-      className={`
-      flex items-center justify-between p-3 rounded-lg transition-all duration-200 border
-      ${
+      className={`flex items-center justify-between p-2 rounded ${
         isWinner && isCompleted
-          ? "bg-accent/10 border-accent font-semibold shadow-sm text-accent-foreground"
-          : "bg-background border-border hover:bg-muted text-foreground"
-      }
-    `}
+          ? "bg-green-100 dark:bg-green-900/20 border border-green-200 dark:border-green-800"
+          : "bg-gray-50 dark:bg-slate-800"
+      }`}
     >
-      <div className="flex items-center gap-3 min-w-0 flex-1">
-        <div
-          className={`
-          w-8 h-8 rounded-full flex items-center justify-center transition-all duration-200 flex-shrink-0
-          ${
-            isWinner && isCompleted
-              ? "bg-accent/20 border-accent"
-              : "bg-blue-100 dark:bg-blue-800/40 border-blue-100 dark:border-blue-800"
-          }
-        `}
-        >
-          <User
-            className={`h-4 w-4 transition-colors duration-200 ${
-              isWinner && isCompleted
-                ? "text-accent-foreground"
-                : "text-blue-600 dark:text-blue-300"
-            }`}
-          />
-        </div>
-        <span
-          className={`text-sm truncate font-medium transition-colors duration-200 ${
-            isWinner && isCompleted
-              ? "text-foreground"
-              : "text-muted-foreground"
-          }`}
-        >
-          {player.display_name}
-        </span>
-      </div>
-      <span
-        className={`text-sm font-mono font-bold transition-colors duration-200 flex-shrink-0 ${
-          isWinner && isCompleted ? "text-foreground" : "text-muted-foreground"
-        }`}
-      >
-        {score}
+      <span className="font-medium text-sm">
+        {player?.display_name || "TBD"}
       </span>
+      <div className="flex items-center gap-2">
+        <span className="text-sm font-bold">{score}</span>
+        {isWinner && isCompleted && (
+          <Trophy className="h-4 w-4 text-green-600 dark:text-green-400" />
+        )}
+      </div>
     </div>
   );
 }

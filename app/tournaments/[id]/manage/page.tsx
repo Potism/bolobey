@@ -103,6 +103,24 @@ export default function TournamentManagePage() {
 
     setActionLoading(true);
     try {
+      console.log("Starting tournament:", {
+        tournamentId: tournament.id,
+        currentUser: user?.id,
+        tournamentCreator: tournament.created_by,
+        participants: tournament.tournament_participants?.length || 0,
+      });
+
+      // Check if user is authenticated and is the creator
+      if (!user) {
+        setError("You must be logged in to start a tournament");
+        return;
+      }
+
+      if (tournament.created_by !== user.id) {
+        setError("Only the tournament creator can start the tournament");
+        return;
+      }
+
       // Check if we have enough participants
       if (
         !tournament.tournament_participants ||
@@ -131,25 +149,74 @@ export default function TournamentManagePage() {
 
       // Generate bracket
       const participantIds = bracketParticipants.map((p) => p.user_id);
-      const { matches } = generateSingleEliminationBracket(participantIds);
+      const { createMatches } =
+        generateSingleEliminationBracket(participantIds);
+
+      // Create tournament phase first
+      const { data: phaseData, error: phaseError } = await supabase
+        .from("tournament_phases")
+        .insert({
+          tournament_id: tournament.id,
+          phase_type: "elimination",
+          phase_order: 1,
+          status: "pending",
+        })
+        .select()
+        .single();
+
+      if (phaseError) {
+        console.error("Error creating tournament phase:", phaseError);
+        if (phaseError.code === "42501") {
+          setError(
+            "Permission denied: You don't have permission to create tournament phases"
+          );
+        } else {
+          setError("Failed to create tournament phase: " + phaseError.message);
+        }
+        return;
+      }
+
+      console.log("Tournament phase created:", phaseData);
+
+      // Set the correct tournament_id and phase_id for all matches
+      const matchesWithIds = createMatches.map((match) => ({
+        ...match,
+        tournament_id: tournament.id,
+        phase_id: phaseData.id,
+      }));
+
+      console.log("Creating matches:", matchesWithIds);
 
       // Save matches to database
       const { error: matchesError } = await supabase
         .from("matches")
-        .insert(matches);
+        .insert(matchesWithIds);
 
       if (matchesError) {
         console.error("Error creating matches:", matchesError);
-        setError(
-          "Failed to create tournament matches: " + matchesError.message
-        );
+        if (matchesError.code === "42501") {
+          setError(
+            "Permission denied: You don't have permission to create matches"
+          );
+        } else if (matchesError.code === "23503") {
+          setError("Invalid tournament or phase reference");
+        } else {
+          setError(
+            "Failed to create tournament matches: " + matchesError.message
+          );
+        }
         return;
       }
+
+      console.log("Matches created successfully");
 
       // Update tournament status
       const { error } = await supabase
         .from("tournaments")
-        .update({ status: "in_progress" })
+        .update({
+          status: "in_progress",
+          current_phase: "elimination",
+        })
         .eq("id", tournament.id);
 
       if (error) {

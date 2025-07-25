@@ -76,6 +76,14 @@ export function Navigation() {
                 Leaderboard
               </Link>
             </motion.div>
+            <motion.div whileHover={{ y: -2 }} transition={{ duration: 0.2 }}>
+              <Link
+                href="/demo-tournament"
+                className="text-sm font-medium text-foreground/60 transition-colors hover:text-foreground"
+              >
+                V2 Demo
+              </Link>
+            </motion.div>
           </div>
 
           {/* Desktop User Menu */}

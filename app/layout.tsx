@@ -3,6 +3,7 @@ import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
 import { AuthProvider } from "@/lib/hooks/useAuth";
 import { ThemeProvider } from "@/lib/theme-provider";
+import { PWAInstaller } from "@/components/pwa-installer";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -18,6 +19,22 @@ export const metadata: Metadata = {
   title: "Bolobey - Beyblade Tournament Management",
   description:
     "Manage Beyblade tournaments with bracket generation, player stats, and more",
+  manifest: "/manifest.json",
+  appleWebApp: {
+    capable: true,
+    statusBarStyle: "default",
+    title: "Bolobey",
+  },
+  formatDetection: {
+    telephone: false,
+  },
+};
+
+export const viewport = {
+  themeColor: "#8b5cf6",
+  width: "device-width",
+  initialScale: 1,
+  maximumScale: 1,
 };
 
 export default function RootLayout({
@@ -53,7 +70,10 @@ export default function RootLayout({
         suppressHydrationWarning
       >
         <ThemeProvider>
-          <AuthProvider>{children}</AuthProvider>
+          <AuthProvider>
+            {children}
+            <PWAInstaller />
+          </AuthProvider>
         </ThemeProvider>
       </body>
     </html>
