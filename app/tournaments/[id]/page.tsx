@@ -346,7 +346,7 @@ export default function TournamentPage() {
     return (
       <div className="min-h-screen bg-background">
         <Navigation />
-        <div className="container mx-auto px-4 py-8">
+        <div className="container mx-auto px-4 sm:px-6 py-4 sm:py-8">
           <div className="flex items-center justify-center h-64">
             <div className="text-center">
               <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary mx-auto mb-4"></div>
@@ -362,10 +362,12 @@ export default function TournamentPage() {
     return (
       <div className="min-h-screen bg-background">
         <Navigation />
-        <div className="container mx-auto px-4 py-8">
+        <div className="container mx-auto px-4 sm:px-6 py-4 sm:py-8">
           <div className="text-center">
-            <h1 className="text-2xl font-bold mb-4">Tournament Not Found</h1>
-            <p className="text-muted-foreground mb-4">
+            <h1 className="text-xl sm:text-2xl font-bold mb-4">
+              Tournament Not Found
+            </h1>
+            <p className="text-sm sm:text-base text-muted-foreground mb-4">
               {error || "This tournament does not exist."}
             </p>
             <Button asChild>
@@ -385,27 +387,35 @@ export default function TournamentPage() {
     <div className="min-h-screen bg-background">
       <Navigation />
 
-      <div className="container mx-auto px-4 py-8">
+      <div className="container mx-auto px-4 sm:px-6 py-4 sm:py-8">
         {/* Tournament Header */}
         <motion.div
           initial={{ opacity: 0, y: -20 }}
           animate={{ opacity: 1, y: 0 }}
-          className="mb-8"
+          className="mb-6 sm:mb-8"
         >
-          <div className="flex items-start justify-between mb-6">
-            <div>
-              <h1 className="text-4xl font-bold mb-2">{tournament.name}</h1>
-              <p className="text-xl text-muted-foreground mb-4">
+          <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between mb-4 sm:mb-6 gap-4">
+            <div className="flex-1">
+              <h1 className="text-2xl sm:text-3xl lg:text-4xl font-bold mb-2">
+                {tournament.name}
+              </h1>
+              <p className="text-base sm:text-lg lg:text-xl text-muted-foreground mb-4">
                 {tournament.description}
               </p>
 
-              <div className="flex flex-wrap gap-4 mb-6">
-                <Badge variant="outline" className="flex items-center gap-2">
-                  <Calendar className="h-4 w-4" />
+              <div className="flex flex-wrap gap-2 sm:gap-4 mb-4 sm:mb-6">
+                <Badge
+                  variant="outline"
+                  className="flex items-center gap-1 sm:gap-2 text-xs sm:text-sm"
+                >
+                  <Calendar className="h-3 w-3 sm:h-4 sm:w-4" />
                   {new Date(tournament.start_date).toLocaleDateString()}
                 </Badge>
-                <Badge variant="outline" className="flex items-center gap-2">
-                  <Users className="h-4 w-4" />
+                <Badge
+                  variant="outline"
+                  className="flex items-center gap-1 sm:gap-2 text-xs sm:text-sm"
+                >
+                  <Users className="h-3 w-3 sm:h-4 sm:w-4" />
                   {participants.length}/{tournament.max_participants}{" "}
                   Participants
                 </Badge>
@@ -415,10 +425,11 @@ export default function TournamentPage() {
                       ? "default"
                       : "secondary"
                   }
+                  className="text-xs sm:text-sm"
                 >
                   {tournament.status}
                 </Badge>
-                <Badge variant="outline">
+                <Badge variant="outline" className="text-xs sm:text-sm">
                   {tournament.format.replace("_", " ")}
                 </Badge>
               </div>
@@ -430,7 +441,7 @@ export default function TournamentPage() {
                 <h3 className="text-sm font-medium text-muted-foreground mb-2">
                   Participants ({participants.length})
                 </h3>
-                <div className="flex flex-wrap gap-2">
+                <div className="flex flex-wrap gap-1 sm:gap-2">
                   {participants.map((participant) => (
                     <Badge
                       key={participant.id}
@@ -444,12 +455,17 @@ export default function TournamentPage() {
               </div>
             )}
 
-            <div className="flex gap-2">
+            <div className="flex flex-col sm:flex-row gap-2 sm:gap-3">
               {isCreator && (
-                <Button asChild variant="outline">
+                <Button
+                  asChild
+                  variant="outline"
+                  className="text-xs sm:text-sm"
+                >
                   <Link href={`/tournaments/${tournamentId}/manage`}>
-                    <Settings className="h-4 w-4 mr-2" />
-                    Manage
+                    <Settings className="h-3 w-3 sm:h-4 sm:w-4 mr-1 sm:mr-2" />
+                    <span className="hidden sm:inline">Manage</span>
+                    <span className="sm:hidden">Manage</span>
                   </Link>
                 </Button>
               )}
@@ -460,33 +476,50 @@ export default function TournamentPage() {
                   {isParticipant ? (
                     <Badge
                       variant="default"
-                      className="px-3 py-2 bg-green-600 hover:bg-green-700"
+                      className="px-2 sm:px-3 py-2 bg-green-600 hover:bg-green-700 text-xs sm:text-sm"
                     >
-                      <Users className="h-4 w-4 mr-2" />
-                      Joined ✓
+                      <Users className="h-3 w-3 sm:h-4 sm:w-4 mr-1 sm:mr-2" />
+                      <span className="hidden sm:inline">Joined ✓</span>
+                      <span className="sm:hidden">Joined</span>
                     </Badge>
                   ) : tournament.status === "open" ? (
                     <Button
                       onClick={handleJoinTournament}
                       disabled={joining}
-                      className="bg-green-600 hover:bg-green-700"
+                      className="bg-green-600 hover:bg-green-700 text-xs sm:text-sm"
                     >
-                      <Users className="h-4 w-4 mr-2" />
-                      {joining ? "Joining..." : "Join Tournament"}
+                      <Users className="h-3 w-3 sm:h-4 sm:w-4 mr-1 sm:mr-2" />
+                      {joining ? (
+                        <span className="hidden sm:inline">Joining...</span>
+                      ) : (
+                        <>
+                          <span className="hidden sm:inline">
+                            Join Tournament
+                          </span>
+                          <span className="sm:hidden">Join</span>
+                        </>
+                      )}
                     </Button>
                   ) : (
-                    <Badge variant="secondary" className="px-3 py-2">
-                      <Lock className="h-4 w-4 mr-2" />
-                      Registration Closed
+                    <Badge
+                      variant="secondary"
+                      className="px-2 sm:px-3 py-2 text-xs sm:text-sm"
+                    >
+                      <Lock className="h-3 w-3 sm:h-4 sm:w-4 mr-1 sm:mr-2" />
+                      <span className="hidden sm:inline">
+                        Registration Closed
+                      </span>
+                      <span className="sm:hidden">Closed</span>
                     </Badge>
                   )}
                 </>
               )}
 
-              <Button asChild variant="outline">
+              <Button asChild variant="outline" className="text-xs sm:text-sm">
                 <Link href={`/tournaments/${tournamentId}/bracket`}>
-                  <Eye className="h-4 w-4 mr-2" />
-                  View Bracket
+                  <Eye className="h-3 w-3 sm:h-4 sm:w-4 mr-1 sm:mr-2" />
+                  <span className="hidden sm:inline">View Bracket</span>
+                  <span className="sm:hidden">Bracket</span>
                 </Link>
               </Button>
             </div>
@@ -495,31 +528,47 @@ export default function TournamentPage() {
 
         {/* V2 Features Tabs */}
         <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-          <TabsList className="grid w-full grid-cols-4 mb-8">
-            <TabsTrigger value="dashboard" className="flex items-center gap-2">
-              <BarChart3 className="h-4 w-4" />
-              Live Dashboard
+          <TabsList className="grid w-full grid-cols-2 sm:grid-cols-4 mb-6 sm:mb-8 gap-1 sm:gap-2">
+            <TabsTrigger
+              value="dashboard"
+              className="flex items-center gap-1 sm:gap-2 text-xs sm:text-sm px-2 sm:px-3"
+            >
+              <BarChart3 className="h-3 w-3 sm:h-4 sm:w-4" />
+              <span className="hidden sm:inline">Live Dashboard</span>
+              <span className="sm:hidden">Dashboard</span>
             </TabsTrigger>
-            <TabsTrigger value="bracket" className="flex items-center gap-2">
-              <Trophy className="h-4 w-4" />
-              Bracket
+            <TabsTrigger
+              value="bracket"
+              className="flex items-center gap-1 sm:gap-2 text-xs sm:text-sm px-2 sm:px-3"
+            >
+              <Trophy className="h-3 w-3 sm:h-4 sm:w-4" />
+              <span className="hidden sm:inline">Bracket</span>
+              <span className="sm:hidden">Bracket</span>
             </TabsTrigger>
-            <TabsTrigger value="scoring" className="flex items-center gap-2">
-              <Zap className="h-4 w-4" />
-              Live Scoring
+            <TabsTrigger
+              value="scoring"
+              className="flex items-center gap-1 sm:gap-2 text-xs sm:text-sm px-2 sm:px-3"
+            >
+              <Zap className="h-3 w-3 sm:h-4 sm:w-4" />
+              <span className="hidden sm:inline">Live Scoring</span>
+              <span className="sm:hidden">Scoring</span>
             </TabsTrigger>
-            <TabsTrigger value="chat" className="flex items-center gap-2">
-              <MessageCircle className="h-4 w-4" />
-              Chat
+            <TabsTrigger
+              value="chat"
+              className="flex items-center gap-1 sm:gap-2 text-xs sm:text-sm px-2 sm:px-3"
+            >
+              <MessageCircle className="h-3 w-3 sm:h-4 sm:w-4" />
+              <span className="hidden sm:inline">Chat</span>
+              <span className="sm:hidden">Chat</span>
             </TabsTrigger>
           </TabsList>
 
-          <TabsContent value="dashboard" className="space-y-6">
-            <div className="text-center mb-6">
-              <h2 className="text-2xl font-bold mb-2">
+          <TabsContent value="dashboard" className="space-y-4 sm:space-y-6">
+            <div className="text-center mb-4 sm:mb-6">
+              <h2 className="text-xl sm:text-2xl font-bold mb-2">
                 Live Tournament Dashboard
               </h2>
-              <p className="text-muted-foreground">
+              <p className="text-sm sm:text-base text-muted-foreground">
                 Real-time tournament progress with live statistics and match
                 updates.
               </p>
@@ -533,10 +582,12 @@ export default function TournamentPage() {
             />
           </TabsContent>
 
-          <TabsContent value="bracket" className="space-y-6">
-            <div className="text-center mb-6">
-              <h2 className="text-2xl font-bold mb-2">Tournament Bracket</h2>
-              <p className="text-muted-foreground">
+          <TabsContent value="bracket" className="space-y-4 sm:space-y-6">
+            <div className="text-center mb-4 sm:mb-6">
+              <h2 className="text-xl sm:text-2xl font-bold mb-2">
+                Tournament Bracket
+              </h2>
+              <p className="text-sm sm:text-base text-muted-foreground">
                 Interactive tournament bracket with live updates and match
                 management.
               </p>
@@ -549,16 +600,18 @@ export default function TournamentPage() {
             />
           </TabsContent>
 
-          <TabsContent value="scoring" className="space-y-6">
-            <div className="text-center mb-6">
-              <h2 className="text-2xl font-bold mb-2">Live Match Scoring</h2>
-              <p className="text-muted-foreground">
+          <TabsContent value="scoring" className="space-y-4 sm:space-y-6">
+            <div className="text-center mb-4 sm:mb-6">
+              <h2 className="text-xl sm:text-2xl font-bold mb-2">
+                Live Match Scoring
+              </h2>
+              <p className="text-sm sm:text-base text-muted-foreground">
                 Real-time scoring with instant updates across all devices.
               </p>
             </div>
 
             {selectedMatch ? (
-              <div className="max-w-4xl mx-auto">
+              <div className="w-full max-w-4xl mx-auto px-2 sm:px-0">
                 <MatchScoring
                   matchId={selectedMatch.id}
                   tournamentId={tournamentId}
@@ -596,15 +649,17 @@ export default function TournamentPage() {
             )}
           </TabsContent>
 
-          <TabsContent value="chat" className="space-y-6">
-            <div className="text-center mb-6">
-              <h2 className="text-2xl font-bold mb-2">Tournament Chat</h2>
-              <p className="text-muted-foreground">
+          <TabsContent value="chat" className="space-y-4 sm:space-y-6">
+            <div className="text-center mb-4 sm:mb-6">
+              <h2 className="text-xl sm:text-2xl font-bold mb-2">
+                Tournament Chat
+              </h2>
+              <p className="text-sm sm:text-base text-muted-foreground">
                 Real-time chat for tournament participants and spectators.
               </p>
             </div>
 
-            <div className="w-full max-w-4xl mx-auto">
+            <div className="w-full max-w-4xl mx-auto px-2 sm:px-0">
               <TournamentChat
                 tournamentId={tournamentId}
                 currentUserId={currentUser?.id || "anonymous"}
