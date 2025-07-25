@@ -132,8 +132,8 @@ export default function DemoTournamentPage() {
   const [activeTab, setActiveTab] = useState("dashboard");
   const [selectedMatch, setSelectedMatch] = useState(mockMatches[0]);
 
-  const handleMatchClick = (match: any) => {
-    setSelectedMatch(match);
+  const handleMatchClick = (match: unknown) => {
+    setSelectedMatch(match as (typeof mockMatches)[0]);
     setActiveTab("scoring");
   };
 
