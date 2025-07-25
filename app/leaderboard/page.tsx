@@ -151,6 +151,10 @@ export default function LeaderboardPage() {
         win_percentage: 84.4,
         tournaments_won: 8,
         tournaments_played: 12,
+        total_points: 156,
+        total_burst_points: 89,
+        total_ringout_points: 45,
+        total_spinout_points: 22,
       },
       {
         id: "2",
@@ -160,6 +164,10 @@ export default function LeaderboardPage() {
         win_percentage: 78.8,
         tournaments_won: 6,
         tournaments_played: 15,
+        total_points: 142,
+        total_burst_points: 78,
+        total_ringout_points: 38,
+        total_spinout_points: 26,
       },
       {
         id: "3",
@@ -169,6 +177,10 @@ export default function LeaderboardPage() {
         win_percentage: 84.2,
         tournaments_won: 5,
         tournaments_played: 8,
+        total_points: 134,
+        total_burst_points: 76,
+        total_ringout_points: 35,
+        total_spinout_points: 23,
       },
       {
         id: "4",
@@ -178,6 +190,10 @@ export default function LeaderboardPage() {
         win_percentage: 71.6,
         tournaments_won: 4,
         tournaments_played: 18,
+        total_points: 198,
+        total_burst_points: 112,
+        total_ringout_points: 56,
+        total_spinout_points: 30,
       },
       {
         id: "5",
@@ -187,6 +203,10 @@ export default function LeaderboardPage() {
         win_percentage: 86.2,
         tournaments_won: 3,
         tournaments_played: 5,
+        total_points: 98,
+        total_burst_points: 58,
+        total_ringout_points: 25,
+        total_spinout_points: 15,
       },
     ];
     setPlayers(demoPlayers);

@@ -1,296 +1,262 @@
-import { TournamentParticipant, User, CreateMatch } from "./types";
+import {
+  BracketMatch,
+  CreateMatch,
+  CreateRoundRobinMatch,
+  RoundRobinStandings,
+  TournamentBracket,
+  BattleResult,
+  User,
+} from "./types";
 
-export interface BracketParticipant extends TournamentParticipant {
+export interface BracketParticipant {
+  id: string;
+  tournament_id: string;
+  user_id: string;
+  seed: number | null;
+  joined_at: string;
   user?: User;
 }
 
-export interface BracketMatch {
-  id?: string;
-  round: number;
-  match_number: number;
-  player1?: BracketParticipant;
-  player2?: BracketParticipant;
-  winner?: BracketParticipant;
-  player1_score: number;
-  player2_score: number;
-  status: "pending" | "in_progress" | "completed";
-  is_bye: boolean;
+export interface TournamentStats {
+  total_matches: number;
+  completed_matches: number;
+  total_participants: number;
+  current_round: number;
+  total_rounds: number;
+  progress: number;
 }
 
-export interface BracketRound {
-  round: number;
-  name: string;
-  matches: BracketMatch[];
-}
+// Generate all possible pairings for round robin phase
+export function generateRoundRobinMatches(
+  participants: string[]
+): CreateRoundRobinMatch[] {
+  const matches: CreateRoundRobinMatch[] = [];
+  const n = participants.length;
 
-export interface TournamentBracket {
-  rounds: BracketRound[];
-  champion?: BracketParticipant;
-}
+  // If odd number of participants, add a "bye" player
+  const players = n % 2 === 0 ? [...participants] : [...participants, "BYE"];
 
-/**
- * Generate a single elimination bracket
- */
-export function generateSingleEliminationBracket(
-  participants: BracketParticipant[],
-  tournamentId: string
-): { bracket: TournamentBracket; matches: CreateMatch[] } {
-  if (participants.length < 2) {
-    throw new Error("Need at least 2 participants to create a bracket");
+  // Generate round robin schedule using circle method
+  for (let round = 0; round < players.length - 1; round++) {
+    for (let i = 0; i < players.length / 2; i++) {
+      const player1 = players[i];
+      const player2 = players[players.length - 1 - i];
+
+      // Skip matches with "BYE" player
+      if (player1 !== "BYE" && player2 !== "BYE") {
+        matches.push({
+          tournament_id: "", // Will be set when creating
+          player1_id: player1,
+          player2_id: player2,
+        });
+      }
+    }
+
+    // Rotate players (keep first player fixed, rotate the rest)
+    const lastPlayer = players[players.length - 1];
+    for (let i = players.length - 1; i > 1; i--) {
+      players[i] = players[i - 1];
+    }
+    players[1] = lastPlayer;
   }
 
-  // Sort participants by seed (if available) or random order
-  const sortedParticipants = [...participants].sort((a, b) => {
-    if (a.seed && b.seed) return a.seed - b.seed;
-    return Math.random() - 0.5; // Random if no seeds
-  });
+  return matches;
+}
+
+// Calculate standings for round robin phase
+export function calculateRoundRobinStandings(
+  participants: Array<{ user_id: string; display_name: string; total_points: number; matches_played: number; matches_won: number }>
+): RoundRobinStandings[] {
+  return participants
+    .map((participant) => ({
+      user_id: participant.user_id,
+      display_name: participant.display_name,
+      total_points: participant.total_points,
+      burst_points: 0, // Will be calculated from battles
+      ringout_points: 0, // Will be calculated from battles
+      spinout_points: 0, // Will be calculated from battles
+      matches_played: participant.matches_played,
+      matches_won: participant.matches_won,
+      win_percentage: participant.matches_played > 0 
+        ? Math.round((participant.matches_won / participant.matches_played) * 100 * 100) / 100
+        : 0,
+      rank: 0,
+    }))
+    .sort((a, b) => {
+      // Sort by total points (descending)
+      if (b.total_points !== a.total_points) {
+        return b.total_points - a.total_points;
+      }
+      // Then by win percentage (descending)
+      if (b.win_percentage !== a.win_percentage) {
+        return b.win_percentage - a.win_percentage;
+      }
+      // Then by matches won (descending)
+      return b.matches_won - a.matches_won;
+    })
+    .map((standing, index) => ({
+      ...standing,
+      rank: index + 1,
+    }));
+}
+
+// Generate single elimination bracket matches
+export function generateSingleEliminationBracket(
+  participants: string[]
+): { matches: BracketMatch[]; createMatches: CreateMatch[] } {
+  const matches: BracketMatch[] = [];
+  const createMatches: CreateMatch[] = [];
+  const n = participants.length;
 
   // Calculate number of rounds needed
-  const numRounds = Math.ceil(Math.log2(participants.length));
-  const totalSlots = Math.pow(2, numRounds);
+  const rounds = Math.ceil(Math.log2(n));
+  const totalSlots = Math.pow(2, rounds);
 
-  // Add byes if needed
-  const paddedParticipants: (BracketParticipant | null)[] = [
-    ...sortedParticipants,
-  ];
-  while (paddedParticipants.length < totalSlots) {
-    paddedParticipants.push(null); // null represents a bye
-  }
+  // Create first round matches
+  for (let i = 0; i < totalSlots / 2; i++) {
+    const player1Index = i * 2;
+    const player2Index = i * 2 + 1;
 
-  const rounds: BracketRound[] = [];
-  const matches: CreateMatch[] = [];
-  let currentParticipants: (BracketParticipant | null)[] = paddedParticipants;
-
-  // Generate rounds from first to final
-  for (let roundIndex = 0; roundIndex < numRounds; roundIndex++) {
-    const round: BracketRound = {
-      round: roundIndex + 1,
-      name: getRoundName(roundIndex + 1, numRounds),
-      matches: [],
+    const match: BracketMatch = {
+      id: `match-${i}`,
+      round: 1,
+      match_number: i + 1,
+      bracket_type: "upper",
+             player1: player1Index < participants.length ? { id: participants[player1Index], display_name: participants[player1Index] } as User : undefined,
+       player2: player2Index < participants.length ? { id: participants[player2Index], display_name: participants[player2Index] } as User : undefined,
+      winner: undefined,
+      player1_score: 0,
+      player2_score: 0,
+      status: "pending",
     };
 
-    const roundMatches: BracketMatch[] = [];
-    const nextRoundParticipants: (BracketParticipant | null)[] = [];
+    matches.push(match);
 
-    // Create matches for this round
-    for (let i = 0; i < currentParticipants.length; i += 2) {
-      const player1 = currentParticipants[i];
-      const player2 = currentParticipants[i + 1];
-      const matchNumber = Math.floor(i / 2) + 1;
+    createMatches.push({
+      tournament_id: "",
+      phase_id: "",
+      round: 1,
+      match_number: i + 1,
+      bracket_type: "upper",
+      player1_id: player1Index < participants.length ? participants[player1Index] : undefined,
+      player2_id: player2Index < participants.length ? participants[player2Index] : undefined,
+    });
+  }
 
-      // Check if this is a bye match
-      const isBye = !player1 || !player2;
-
-      let winner: BracketParticipant | undefined;
-      let status: "pending" | "completed" = "pending";
-
-      // Auto-advance if it's a bye
-      if (isBye) {
-        winner = player1 || player2 || undefined;
-        status = "completed";
-      }
-
-      const bracketMatch: BracketMatch = {
-        round: roundIndex + 1,
-        match_number: matchNumber,
-        player1: player1 || undefined,
-        player2: player2 || undefined,
-        winner,
+  // Create subsequent rounds (empty matches that will be populated as winners advance)
+  for (let round = 2; round <= rounds; round++) {
+    const matchesInRound = Math.pow(2, rounds - round);
+    for (let i = 0; i < matchesInRound; i++) {
+      const match: BracketMatch = {
+        id: `match-${round}-${i}`,
+        round,
+        match_number: i + 1,
+        bracket_type: round === rounds ? "final" : "upper",
+        player1: undefined,
+        player2: undefined,
+        winner: undefined,
         player1_score: 0,
         player2_score: 0,
-        status,
-        is_bye: isBye,
+        status: "pending",
       };
 
-      roundMatches.push(bracketMatch);
+      matches.push(match);
 
-      // Create database match record
-      if (player1 || player2) {
-        const dbMatch: CreateMatch = {
-          tournament_id: tournamentId,
-          round: roundIndex + 1,
-          match_number: matchNumber,
-          player1_id: player1?.user_id || null,
-          player2_id: player2?.user_id || null,
-          winner_id: winner?.user_id || null,
-          status: status,
-        };
-        matches.push(dbMatch);
-      }
-
-      // Determine who advances to next round
-      if (roundIndex < numRounds - 1) {
-        nextRoundParticipants.push(winner || null);
-      }
+      createMatches.push({
+        tournament_id: "",
+        phase_id: "",
+        round,
+        match_number: i + 1,
+        bracket_type: round === rounds ? "final" : "upper",
+      });
     }
-
-    round.matches = roundMatches;
-    rounds.push(round);
-    currentParticipants = nextRoundParticipants;
   }
 
-  // Determine champion
-  const finalMatch = rounds[rounds.length - 1]?.matches[0];
-  const champion = finalMatch?.winner;
+  return { matches, createMatches };
+}
 
-  return {
-    bracket: { rounds, champion },
-    matches,
+// Generate double elimination bracket
+export function generateDoubleEliminationBracket(
+  participants: string[]
+): { bracket: TournamentBracket; createMatches: CreateMatch[] } {
+  const { matches: upperBracketMatches, createMatches: upperCreateMatches } = generateSingleEliminationBracket(participants);
+  
+  // For now, we'll use single elimination structure
+  // Double elimination can be implemented later with more complex logic
+  const bracket: TournamentBracket = {
+    upper_bracket: upperBracketMatches,
+    lower_bracket: [],
+    final_matches: [],
+    total_rounds: Math.max(...upperBracketMatches.map(m => m.round)),
   };
+
+  return { bracket, createMatches: upperCreateMatches };
 }
 
-/**
- * Get human-readable round name
- */
-function getRoundName(round: number, totalRounds: number): string {
-  const roundsFromEnd = totalRounds - round + 1;
+// Update match result with Beyblade X battle system
+export async function updateMatchResult(
+  matchId: string,
+  battles: BattleResult[]
+): Promise<void> {
+  // This function will be implemented to update the database
+  // with battle results and calculate match winner
+  console.log(`Updating match ${matchId} with ${battles.length} battles`);
+}
 
-  switch (roundsFromEnd) {
-    case 1:
-      return "Final";
-    case 2:
-      return "Semifinal";
-    case 3:
-      return "Quarterfinal";
-    case 4:
-      return "Round of 16";
-    case 5:
-      return "Round of 32";
+// Calculate points for a single battle
+export function calculateBattlePoints(finishType: "burst" | "ringout" | "spinout"): number {
+  switch (finishType) {
+    case "burst":
+      return 3;
+    case "ringout":
+      return 2;
+    case "spinout":
+      return 1;
     default:
-      return `Round ${round}`;
+      return 0;
   }
 }
 
-/**
- * Update match result and progress bracket
- */
-export function updateMatchResult(
-  bracket: TournamentBracket,
-  roundNumber: number,
-  matchNumber: number,
-  winnerId: string,
-  player1Score: number,
-  player2Score: number
-): TournamentBracket {
-  const updatedBracket = JSON.parse(
-    JSON.stringify(bracket)
-  ) as TournamentBracket;
-
-  // Find and update the match
-  const round = updatedBracket.rounds.find((r) => r.round === roundNumber);
-  if (!round) throw new Error("Round not found");
-
-  const match = round.matches.find((m) => m.match_number === matchNumber);
-  if (!match) throw new Error("Match not found");
-
-  // Update match result
-  match.player1_score = player1Score;
-  match.player2_score = player2Score;
-  match.status = "completed";
-
-  // Determine winner
-  if (match.player1?.user_id === winnerId) {
-    match.winner = match.player1;
-  } else if (match.player2?.user_id === winnerId) {
-    match.winner = match.player2;
-  } else {
-    throw new Error("Invalid winner ID");
-  }
-
-  // Progress winner to next round if not final
-  if (roundNumber < updatedBracket.rounds.length) {
-    const nextRound = updatedBracket.rounds[roundNumber]; // 0-indexed
-    const nextMatchNumber = Math.ceil(matchNumber / 2);
-    const nextMatch = nextRound.matches.find(
-      (m) => m.match_number === nextMatchNumber
-    );
-
-    if (nextMatch) {
-      // Determine if winner goes to player1 or player2 slot
-      const isFirstSlot = (matchNumber - 1) % 2 === 0;
-      if (isFirstSlot) {
-        nextMatch.player1 = match.winner;
-      } else {
-        nextMatch.player2 = match.winner;
-      }
-
-      // If both players are now set, match can begin
-      if (nextMatch.player1 && nextMatch.player2) {
-        nextMatch.status = "pending";
-      }
-    }
-  }
-
-  // Update champion if this was the final
-  if (roundNumber === updatedBracket.rounds.length) {
-    updatedBracket.champion = match.winner;
-  }
-
-  return updatedBracket;
-}
-
-/**
- * Get next available matches that can be played
- */
-export function getAvailableMatches(
-  bracket: TournamentBracket
-): BracketMatch[] {
-  const availableMatches: BracketMatch[] = [];
-
-  for (const round of bracket.rounds) {
-    for (const match of round.matches) {
-      if (
-        match.status === "pending" &&
-        match.player1 &&
-        match.player2 &&
-        !match.is_bye
-      ) {
-        availableMatches.push(match);
-      }
-    }
-  }
-
-  return availableMatches;
-}
-
-/**
- * Check if tournament is complete
- */
-export function isTournamentComplete(bracket: TournamentBracket): boolean {
-  const finalRound = bracket.rounds[bracket.rounds.length - 1];
-  const finalMatch = finalRound?.matches[0];
-  return finalMatch?.status === "completed" && !!finalMatch.winner;
-}
-
-/**
- * Get tournament statistics
- */
-export function getTournamentStats(bracket: TournamentBracket) {
+// Get tournament statistics
+export function getTournamentStats(
+  bracket: TournamentBracket | BracketMatch[] | unknown
+): TournamentStats {
   let totalMatches = 0;
   let completedMatches = 0;
-  let pendingMatches = 0;
 
-  for (const round of bracket.rounds) {
-    for (const match of round.matches) {
-      if (!match.is_bye) {
-        totalMatches++;
-        if (match.status === "completed") {
-          completedMatches++;
-        } else if (
-          match.status === "pending" &&
-          match.player1 &&
-          match.player2
-        ) {
-          pendingMatches++;
-        }
-      }
-    }
+  // Type guard for rounds
+  function hasRounds(obj: unknown): obj is { rounds: { matches: BracketMatch[] }[] } {
+    return typeof obj === 'object' && obj !== null && Array.isArray((obj as Record<string, unknown>).rounds);
   }
 
+  if (Array.isArray(bracket)) {
+    // Handle old array format
+    totalMatches = bracket.length;
+    completedMatches = bracket.filter((match: BracketMatch) => match.status === "completed").length;
+  } else if (hasRounds(bracket)) {
+    // Handle old single elimination format
+    const allMatches = bracket.rounds.flatMap((round: { matches: BracketMatch[] }) => round.matches);
+    totalMatches = allMatches.length;
+    completedMatches = allMatches.filter((match: BracketMatch) => match.status === "completed").length;
+  } else if (bracket && typeof bracket === 'object' && 'upper_bracket' in bracket && 'lower_bracket' in bracket && 'final_matches' in bracket) {
+    // Handle new TournamentBracket format
+    const allMatches = [
+      ...(bracket as TournamentBracket).upper_bracket,
+      ...(bracket as TournamentBracket).lower_bracket,
+      ...(bracket as TournamentBracket).final_matches,
+    ];
+    totalMatches = allMatches.length;
+    completedMatches = allMatches.filter((match: BracketMatch) => match.status === "completed").length;
+  }
+
+  const progress = totalMatches > 0 ? Math.round((completedMatches / totalMatches) * 100) : 0;
+
   return {
-    totalMatches,
-    completedMatches,
-    pendingMatches,
-    progress: totalMatches > 0 ? (completedMatches / totalMatches) * 100 : 0,
+    total_matches: totalMatches,
+    completed_matches: completedMatches,
+    total_participants: 0, // Will be calculated from participants
+    current_round: 0, // Not calculated here
+    total_rounds: 0, // Not calculated here
+    progress,
   };
 }

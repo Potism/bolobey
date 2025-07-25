@@ -130,10 +130,8 @@ export default function TournamentManagePage() {
       );
 
       // Generate bracket
-      const { matches } = generateSingleEliminationBracket(
-        bracketParticipants,
-        tournament.id
-      );
+      const participantIds = bracketParticipants.map((p) => p.user_id);
+      const { matches } = generateSingleEliminationBracket(participantIds);
 
       // Save matches to database
       const { error: matchesError } = await supabase

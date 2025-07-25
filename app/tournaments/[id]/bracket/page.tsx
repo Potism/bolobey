@@ -7,41 +7,45 @@ import { useAuth } from "@/lib/hooks/useAuth";
 import { supabase } from "@/lib/supabase";
 import {
   TournamentWithDetails,
-  TournamentParticipant,
+  BracketMatch,
+  TournamentBracket,
+  BattleResult,
   User,
 } from "@/lib/types";
 import {
   generateSingleEliminationBracket,
-  TournamentBracket,
-  BracketParticipant,
-  updateMatchResult,
-  getTournamentStats,
+  generateRoundRobinMatches,
+  calculateRoundRobinStandings,
 } from "@/lib/bracket";
 import { Navigation } from "@/components/navigation";
 import { BracketVisualization } from "@/components/bracket-visualization";
+import { BattleScoringModal } from "@/components/battle-scoring-modal";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Alert, AlertDescription } from "@/components/ui/alert";
-import { Progress } from "@/components/ui/progress";
 import {
-  ArrowLeft,
   Trophy,
   Users,
-  Clock,
   Play,
-  RotateCcw,
-  AlertTriangle,
   Share2,
   Copy,
   Check,
+  Calendar,
+  Crown,
+  AlertCircle,
+  Target,
+  TrendingUp,
+  RotateCcw,
 } from "lucide-react";
 
 interface MatchWithPlayers {
   id: string;
   tournament_id: string;
+  phase_id: string;
   round: number;
   match_number: number;
+  bracket_type: "upper" | "lower" | "final";
   player1_id: string | null;
   player2_id: string | null;
   winner_id: string | null;
@@ -54,68 +58,166 @@ interface MatchWithPlayers {
   winner?: { id: string; display_name: string };
 }
 
+interface RoundRobinMatchWithPlayers {
+  id: string;
+  tournament_id: string;
+  player1_id: string | null;
+  player2_id: string | null;
+  winner_id: string | null;
+  status: string;
+  completed_at: string | null;
+  player1?: { id: string; display_name: string };
+  player2?: { id: string; display_name: string };
+  winner?: { id: string; display_name: string };
+  created_at: string;
+}
+
+interface RoundRobinStandings {
+  user_id: string;
+  display_name: string;
+  total_points: number;
+  matches_played: number;
+  matches_won: number;
+  win_percentage: number;
+  rank: number;
+}
+
+interface TournamentPhase {
+  id: string;
+  tournament_id: string;
+  phase_type: "round_robin" | "elimination";
+  phase_order: number;
+  status: "pending" | "in_progress" | "completed";
+  started_at: string | null;
+  completed_at: string | null;
+}
+
 export default function TournamentBracketPage() {
   const params = useParams();
-  const { user, isAdmin } = useAuth();
+  const { user } = useAuth();
   const [tournament, setTournament] = useState<TournamentWithDetails | null>(
     null
   );
+  const [matches, setMatches] = useState<MatchWithPlayers[]>([]);
+  const [roundRobinMatches, setRoundRobinMatches] = useState<
+    RoundRobinMatchWithPlayers[]
+  >([]);
+  const [roundRobinStandings, setRoundRobinStandings] = useState<
+    RoundRobinStandings[]
+  >([]);
+  const [phases, setPhases] = useState<TournamentPhase[]>([]);
   const [bracket, setBracket] = useState<TournamentBracket | null>(null);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState("");
-  const [generating, setGenerating] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const [tournamentCompleted, setTournamentCompleted] = useState(false);
   const [champion, setChampion] = useState<{ name: string; id: string } | null>(
     null
   );
-  const [copied, setCopied] = useState(false);
   const [showShareMenu, setShowShareMenu] = useState(false);
+  const [copied, setCopied] = useState(false);
   const shareMenuRef = useRef<HTMLDivElement>(null);
+  const [selectedMatch, setSelectedMatch] =
+    useState<RoundRobinMatchWithPlayers | null>(null);
+  const [battleModalOpen, setBattleModalOpen] = useState(false);
 
   const fetchMatches = useCallback(async () => {
+    if (!params.id) return;
+
     try {
       console.log("Fetching matches for tournament:", params.id);
 
-      const { data: matches, error: matchesError } = await supabase
+      const { data, error } = await supabase
         .from("matches")
         .select(
           `
           *,
-          player1:users!player1_id(id, display_name),
-          player2:users!player2_id(id, display_name),
-          winner:users!winner_id(id, display_name)
+          player1:users!matches_player1_id_fkey(id, display_name),
+          player2:users!matches_player2_id_fkey(id, display_name),
+          winner:users!matches_winner_id_fkey(id, display_name)
         `
         )
         .eq("tournament_id", params.id)
-        .order("round")
-        .order("match_number");
+        .order("round", { ascending: true })
+        .order("match_number", { ascending: true });
 
-      if (matchesError) {
-        console.error("Error fetching matches:", matchesError);
-        return;
+      if (error) {
+        console.error("Error fetching matches:", error);
+        throw error;
       }
 
-      console.log("Fetched matches:", matches);
+      console.log("Fetched matches:", data);
+      setMatches(data || []);
 
-      // Convert matches to bracket format
-      if (matches && matches.length > 0) {
-        const reconstructedBracket = reconstructBracketFromMatches(
-          matches as MatchWithPlayers[]
-        );
-        console.log("Reconstructed bracket:", reconstructedBracket);
-        setBracket(reconstructedBracket);
-      } else {
+      if (!data || data.length === 0) {
         console.log("No matches found for tournament");
-        setBracket(null);
       }
-    } catch (error) {
-      console.error("Error fetching matches:", error);
+    } catch (error: unknown) {
+      if (error instanceof Error) {
+        console.error("Error fetching matches:", error);
+        setError("Failed to load matches");
+      }
+    }
+  }, [params.id]);
+
+  const fetchRoundRobinMatches = useCallback(async () => {
+    if (!params.id) return;
+
+    try {
+      const { data, error } = await supabase
+        .from("round_robin_matches")
+        .select(
+          `
+          *,
+          player1:users!round_robin_matches_player1_id_fkey(id, display_name),
+          player2:users!round_robin_matches_player2_id_fkey(id, display_name),
+          winner:users!round_robin_matches_winner_id_fkey(id, display_name)
+        `
+        )
+        .eq("tournament_id", params.id)
+        .order("created_at", { ascending: true });
+
+      if (error) {
+        console.error("Error fetching round robin matches:", error);
+        throw error;
+      }
+
+      setRoundRobinMatches(data || []);
+    } catch (error: unknown) {
+      if (error instanceof Error) {
+        console.error("Error fetching round robin matches:", error);
+      }
+    }
+  }, [params.id]);
+
+  const fetchPhases = useCallback(async () => {
+    if (!params.id) return;
+
+    try {
+      const { data, error } = await supabase
+        .from("tournament_phases")
+        .select("*")
+        .eq("tournament_id", params.id)
+        .order("phase_order", { ascending: true });
+
+      if (error) {
+        console.error("Error fetching phases:", error);
+        throw error;
+      }
+
+      setPhases(data || []);
+    } catch (error: unknown) {
+      if (error instanceof Error) {
+        console.error("Error fetching phases:", error);
+      }
     }
   }, [params.id]);
 
   const fetchTournamentAndBracket = useCallback(async () => {
+    if (!params.id) return;
+
     try {
-      console.log("Fetching tournament:", params.id);
+      setLoading(true);
+      setError(null);
 
       // Fetch tournament details
       const { data: tournamentData, error: tournamentError } = await supabase
@@ -123,14 +225,11 @@ export default function TournamentBracketPage() {
         .select(
           `
           *,
-          created_by_user:users!created_by(id, display_name),
-          winner:users!winner_id(id, display_name),
+          created_by_user:users!tournaments_created_by_fkey(*),
+          winner:users!tournaments_winner_id_fkey(*),
           tournament_participants(
-            id,
-            user_id,
-            seed,
-            joined_at,
-            user:users(id, display_name)
+            *,
+            user:users(*)
           )
         `
         )
@@ -138,239 +237,238 @@ export default function TournamentBracketPage() {
         .single();
 
       if (tournamentError) {
-        console.error("Tournament error:", tournamentError);
-        setError("Tournament not found");
-        return;
+        console.error("Error fetching tournament:", tournamentError);
+        throw tournamentError;
       }
 
       console.log("Tournament data:", tournamentData);
+      setTournament(tournamentData);
 
-      setTournament({
-        ...tournamentData,
-        participant_count: tournamentData.tournament_participants?.length || 0,
-      });
+      // Fetch phases, matches, and round robin matches
+      await Promise.all([
+        fetchPhases(),
+        fetchMatches(),
+        fetchRoundRobinMatches(),
+      ]);
 
-      // Fetch matches if tournament has started
-      if (tournamentData.status !== "open") {
-        console.log("Tournament is not open, fetching matches...");
-        await fetchMatches();
+      // Check if tournament is in progress but has no matches
+      if (
+        tournamentData.status === "in_progress" &&
+        matches.length === 0 &&
+        roundRobinMatches.length === 0
+      ) {
+        console.log(
+          "Tournament is in progress but has no matches, auto-generating..."
+        );
 
-        // Check if we need to auto-generate bracket
-        const { data: existingMatches, error: matchesCheckError } =
-          await supabase
-            .from("matches")
-            .select("id")
-            .eq("tournament_id", params.id)
-            .limit(1);
-
-        if (matchesCheckError) {
-          console.error("Error checking existing matches:", matchesCheckError);
-        } else if (!existingMatches || existingMatches.length === 0) {
-          console.log("No matches found, attempting auto-generation...");
-
-          // Auto-generate the bracket
-          try {
-            const { generateSingleEliminationBracket } = await import(
-              "@/lib/bracket"
-            );
-
-            // Convert participants to bracket format
-            const bracketParticipants =
-              tournamentData.tournament_participants.map(
-                (p: TournamentParticipant & { user?: User }) => ({
-                  id: p.id,
-                  tournament_id: p.tournament_id,
-                  user_id: p.user_id,
-                  seed: p.seed,
-                  joined_at: p.joined_at,
-                  user: p.user,
-                })
-              );
-
-            console.log("Bracket participants:", bracketParticipants);
-
-            // Generate bracket
-            const { bracket: newBracket, matches } =
-              generateSingleEliminationBracket(
-                bracketParticipants,
-                tournamentData.id
-              );
-
-            console.log("Generated matches:", matches);
-
-            // Save matches to database
-            const { error: matchesError } = await supabase
-              .from("matches")
-              .insert(matches);
-
-            if (matchesError) {
-              console.error("Error auto-generating matches:", matchesError);
-              setError(
-                "Failed to generate tournament bracket. Please try again."
-              );
-            } else {
-              console.log("Auto-generated bracket successfully");
-              setBracket(newBracket);
-            }
-          } catch (error) {
-            console.error("Error auto-generating bracket:", error);
-            setError(
-              "Failed to generate tournament bracket. Please try again."
-            );
-          }
+        // Auto-generate matches based on tournament format
+        if (tournamentData.format === "beyblade_x") {
+          await handleGenerateBeybladeXTournament();
+        } else {
+          await handleGenerateBracket();
         }
-      } else {
-        console.log("Tournament is still open, no matches to fetch");
       }
-    } catch (error) {
-      console.error("Error fetching tournament:", error);
-      setError("Failed to load tournament");
+    } catch (error: unknown) {
+      if (error instanceof Error) {
+        console.error("Error fetching tournament:", error);
+        setError("Failed to load tournament");
+      }
     } finally {
       setLoading(false);
     }
-  }, [params.id, fetchMatches]);
+  }, [
+    params.id,
+    fetchPhases,
+    fetchMatches,
+    fetchRoundRobinMatches,
+    matches.length,
+    roundRobinMatches.length,
+  ]);
 
-  useEffect(() => {
-    if (params.id) {
-      fetchTournamentAndBracket();
-    }
-  }, [fetchTournamentAndBracket]);
+  const handleGenerateBeybladeXTournament = async () => {
+    if (!tournament?.tournament_participants) return;
 
-  const reconstructBracketFromMatches = (
-    matches: MatchWithPlayers[]
-  ): TournamentBracket => {
-    // Group matches by round
-    const roundsMap = new Map();
+    try {
+      const participantIds = tournament.tournament_participants.map(
+        (p) => p.user_id
+      );
 
-    matches.forEach((match) => {
-      if (!roundsMap.has(match.round)) {
-        roundsMap.set(match.round, []);
+      console.log(
+        "Generating Beyblade X tournament with",
+        participantIds.length,
+        "participants"
+      );
+
+      // For 2 players, skip Round Robin and go directly to elimination
+      if (participantIds.length === 2) {
+        console.log(
+          "2 players detected - skipping Round Robin, going directly to elimination"
+        );
+
+        // Create elimination phase directly
+        const { data: eliminationPhase, error: phaseError } = await supabase
+          .from("tournament_phases")
+          .insert({
+            tournament_id: params.id as string,
+            phase_type: "elimination",
+            phase_order: 1,
+            status: "in_progress",
+            started_at: new Date().toISOString(),
+          })
+          .select()
+          .single();
+
+        if (phaseError) throw phaseError;
+
+        // Generate single elimination final match
+        const { createMatches } =
+          generateSingleEliminationBracket(participantIds);
+
+        const matchesWithIds = createMatches.map((match) => ({
+          ...match,
+          tournament_id: params.id as string,
+          phase_id: eliminationPhase.id,
+        }));
+
+        const { error: matchesError } = await supabase
+          .from("matches")
+          .insert(matchesWithIds);
+
+        if (matchesError) throw matchesError;
+
+        // Update tournament phase
+        await supabase
+          .from("tournaments")
+          .update({ current_phase: "elimination" })
+          .eq("id", params.id);
+
+        console.log("2-player Beyblade X tournament generated successfully");
+        await fetchMatches();
+        await fetchPhases();
+        return;
       }
-      roundsMap.get(match.round).push({
-        id: match.id,
-        round: match.round,
-        match_number: match.match_number,
-        player1: match.player1
-          ? {
-              user_id: match.player1.id,
-              user: match.player1,
-            }
-          : undefined,
-        player2: match.player2
-          ? {
-              user_id: match.player2.id,
-              user: match.player2,
-            }
-          : undefined,
-        winner: match.winner
-          ? {
-              user_id: match.winner.id,
-              user: match.winner,
-            }
-          : undefined,
-        player1_score: match.player1_score,
-        player2_score: match.player2_score,
-        status: match.status as "pending" | "in_progress" | "completed",
-        is_bye: !match.player1 || !match.player2,
-      });
-    });
 
-    // Convert to rounds array
-    const rounds = Array.from(roundsMap.entries())
-      .sort(([a], [b]) => a - b)
-      .map(([roundNumber, roundMatches]) => ({
-        round: roundNumber,
-        name: getRoundName(roundNumber, roundsMap.size),
-        matches: roundMatches.sort(
-          (a: { match_number: number }, b: { match_number: number }) =>
-            a.match_number - b.match_number
-        ),
+      // For 3+ players, use Round Robin + Elimination
+      console.log(
+        "3+ players detected - using Round Robin + Elimination format"
+      );
+
+      // Create Round Robin phase
+      const { error: phaseError } = await supabase
+        .from("tournament_phases")
+        .insert({
+          tournament_id: params.id as string,
+          phase_type: "round_robin",
+          phase_order: 1,
+          status: "in_progress",
+          started_at: new Date().toISOString(),
+        })
+        .select()
+        .single();
+
+      if (phaseError) throw phaseError;
+
+      // Generate Round Robin matches
+      const roundRobinMatches = generateRoundRobinMatches(participantIds);
+      const matchesWithTournamentId = roundRobinMatches.map((match) => ({
+        ...match,
+        tournament_id: params.id as string,
       }));
 
-    // Find champion
-    const finalRound = rounds[rounds.length - 1];
-    const finalMatch = finalRound?.matches[0];
-    const champion = finalMatch?.winner;
+      const { error: matchesError } = await supabase
+        .from("round_robin_matches")
+        .insert(matchesWithTournamentId);
 
-    return { rounds, champion };
-  };
+      if (matchesError) throw matchesError;
 
-  const getRoundName = (round: number, totalRounds: number): string => {
-    const roundsFromEnd = totalRounds - round + 1;
+      // Update tournament phase
+      await supabase
+        .from("tournaments")
+        .update({ current_phase: "round_robin" })
+        .eq("id", params.id);
 
-    switch (roundsFromEnd) {
-      case 1:
-        return "Final";
-      case 2:
-        return "Semifinal";
-      case 3:
-        return "Quarterfinal";
-      case 4:
-        return "Round of 16";
-      case 5:
-        return "Round of 32";
-      default:
-        return `Round ${round}`;
+      console.log("Beyblade X tournament generated successfully");
+      await fetchRoundRobinMatches();
+      await fetchPhases();
+    } catch (error: unknown) {
+      if (error instanceof Error) {
+        console.error("Error generating Beyblade X tournament:", error);
+        setError("Failed to generate tournament");
+      }
     }
   };
 
   const handleGenerateBracket = async () => {
-    if (
-      !tournament?.tournament_participants ||
-      tournament.tournament_participants.length < 2
-    ) {
-      setError("Need at least 2 participants to generate bracket");
-      return;
-    }
+    if (!tournament?.tournament_participants) return;
 
-    setGenerating(true);
     try {
-      // Convert participants to bracket format
-      const bracketParticipants: BracketParticipant[] =
-        tournament.tournament_participants.map((p) => ({
-          id: p.id,
-          tournament_id: p.tournament_id,
-          user_id: p.user_id,
-          seed: p.seed,
-          joined_at: p.joined_at,
-          user: p.user,
-        }));
-
-      // Generate bracket
-      const { bracket: newBracket, matches } = generateSingleEliminationBracket(
-        bracketParticipants,
-        tournament.id
+      const participantIds = tournament.tournament_participants.map(
+        (p) => p.user_id
       );
+      const { matches: bracketMatches, createMatches } =
+        generateSingleEliminationBracket(participantIds);
 
-      // Save matches to database
-      const { error: matchesError } = await supabase
-        .from("matches")
-        .insert(matches);
+      const matchesWithIds = createMatches.map((match) => ({
+        ...match,
+        tournament_id: params.id as string,
+        phase_id: phases.find((p) => p.phase_type === "elimination")?.id || "",
+      }));
 
-      if (matchesError) {
-        throw matchesError;
+      const { error } = await supabase.from("matches").insert(matchesWithIds);
+
+      if (error) throw error;
+
+      console.log("Generated matches:", matches);
+      setBracket({
+        upper_bracket: bracketMatches,
+        lower_bracket: [],
+        final_matches: [],
+        total_rounds: Math.max(...bracketMatches.map((m) => m.round)),
+      });
+
+      await fetchMatches();
+    } catch (error: unknown) {
+      if (error instanceof Error) {
+        console.error("Error generating bracket:", error);
+        setError("Failed to generate tournament bracket");
       }
-
-      // Update tournament status
-      const { error: tournamentError } = await supabase
-        .from("tournaments")
-        .update({ status: "in_progress" })
-        .eq("id", tournament.id);
-
-      if (tournamentError) {
-        throw tournamentError;
-      }
-
-      setBracket(newBracket);
-      setTournament((prev) =>
-        prev ? { ...prev, status: "in_progress" } : null
-      );
-    } catch (error) {
-      console.error("Error generating bracket:", error);
-      setError("Failed to generate bracket");
-    } finally {
-      setGenerating(false);
     }
+  };
+
+  const reconstructBracketFromMatches = (
+    matches: MatchWithPlayers[]
+  ): TournamentBracket => {
+    // Convert matches to BracketMatch format
+    const bracketMatches: BracketMatch[] = matches.map((match) => ({
+      id: match.id,
+      round: match.round,
+      match_number: match.match_number,
+      bracket_type: match.bracket_type,
+      player1: match.player1 as User | undefined,
+      player2: match.player2 as User | undefined,
+      winner: match.winner as User | undefined,
+      player1_score: match.player1_score,
+      player2_score: match.player2_score,
+      status: match.status as "pending" | "in_progress" | "completed",
+    }));
+
+    // Group by bracket type
+    const upperBracket = bracketMatches.filter(
+      (m) => m.bracket_type === "upper"
+    );
+    const lowerBracket = bracketMatches.filter(
+      (m) => m.bracket_type === "lower"
+    );
+    const finalMatches = bracketMatches.filter(
+      (m) => m.bracket_type === "final"
+    );
+
+    return {
+      upper_bracket: upperBracket,
+      lower_bracket: lowerBracket,
+      final_matches: finalMatches,
+      total_rounds: Math.max(...matches.map((m) => m.round)),
+    };
   };
 
   const handleMatchUpdate = async (
@@ -401,114 +499,446 @@ export default function TournamentBracketPage() {
         throw updateError;
       }
 
-      // Update local bracket state
-      const updatedBracket = updateMatchResult(
-        bracket,
-        roundNumber,
-        matchNumber,
+      // Refresh bracket data
+      await fetchMatches();
+
+      // Check if tournament is complete by counting remaining matches
+      const { data: remainingMatches } = await supabase
+        .from("matches")
+        .select("id")
+        .eq("tournament_id", params.id)
+        .eq("status", "pending");
+
+      if (!remainingMatches || remainingMatches.length === 0) {
+        // Find the tournament winner by getting the final match winner
+        const { data: finalMatches, error: finalMatchesError } = await supabase
+          .from("matches")
+          .select("winner_id, winner:users(id, display_name)")
+          .eq("tournament_id", params.id)
+          .eq("status", "completed")
+          .order("round", { ascending: false })
+          .order("match_number", { ascending: false })
+          .limit(1);
+
+        if (finalMatchesError) {
+          console.error("Error fetching final matches:", finalMatchesError);
+          throw finalMatchesError;
+        }
+
+        console.log("Final matches found:", finalMatches);
+
+        const tournamentWinner = Array.isArray(finalMatches?.[0]?.winner)
+          ? (finalMatches?.[0]?.winner?.[0] as
+              | { id: string; display_name: string }
+              | undefined)
+          : (finalMatches?.[0]?.winner as
+              | { id: string; display_name: string }
+              | undefined);
+        const winnerId = finalMatches?.[0]?.winner_id;
+
+        console.log("Tournament winner data:", { winnerId, tournamentWinner });
+
+        if (winnerId && tournamentWinner) {
+          // Update tournament status and winner
+          const { error: tournamentError } = await supabase
+            .from("tournaments")
+            .update({
+              status: "completed",
+              winner_id: winnerId,
+            })
+            .eq("id", params.id);
+
+          if (tournamentError) {
+            console.error("Error updating tournament:", tournamentError);
+            throw tournamentError;
+          }
+
+          // Update tournament state
+          setTournament((prev) =>
+            prev
+              ? {
+                  ...prev,
+                  status: "completed",
+                  winner_id: winnerId,
+                  winner: {
+                    id: tournamentWinner.id,
+                    display_name: tournamentWinner.display_name,
+                    email: "",
+                    role: "player" as const,
+                    avatar_url: null,
+                    created_at: "",
+                    updated_at: "",
+                  } as User,
+                }
+              : null
+          );
+
+          // Set tournament completion state
+          setTournamentCompleted(true);
+          setChampion({
+            name: tournamentWinner.display_name,
+            id: winnerId,
+          });
+
+          // Show success message for tournament completion
+          console.log(
+            `Tournament completed! Champion: ${tournamentWinner.display_name}`
+          );
+
+          // Debug: Check if tournament was properly updated
+          const { data: updatedTournament, error: checkError } = await supabase
+            .from("tournaments")
+            .select("id, name, status, winner_id")
+            .eq("id", params.id)
+            .single();
+
+          if (checkError) {
+            console.error("Error checking tournament update:", checkError);
+          } else {
+            console.log("Tournament update check:", updatedTournament);
+          }
+
+          // Auto-hide the completion message after 5 seconds
+          setTimeout(() => {
+            setTournamentCompleted(false);
+            setChampion(null);
+          }, 5000);
+        } else {
+          console.error(
+            "Could not determine tournament winner from final matches"
+          );
+
+          // Fallback: Try to get winner from the last completed match
+          const { data: lastCompletedMatch, error: lastMatchError } =
+            await supabase
+              .from("matches")
+              .select("winner_id, winner:users(id, display_name)")
+              .eq("tournament_id", params.id)
+              .eq("status", "completed")
+              .not("winner_id", "is", null)
+              .order("completed_at", { ascending: false })
+              .limit(1)
+              .single();
+
+          if (lastMatchError) {
+            console.error(
+              "Error fetching last completed match:",
+              lastMatchError
+            );
+            throw new Error("Could not determine tournament winner");
+          }
+
+          if (lastCompletedMatch?.winner_id && lastCompletedMatch?.winner) {
+            console.log("Using fallback winner:", lastCompletedMatch);
+
+            // Update tournament status and winner
+            const { error: tournamentError } = await supabase
+              .from("tournaments")
+              .update({
+                status: "completed",
+                winner_id: lastCompletedMatch.winner_id,
+              })
+              .eq("id", params.id);
+
+            if (tournamentError) {
+              console.error("Error updating tournament:", tournamentError);
+              throw tournamentError;
+            }
+
+            // Update tournament state
+            setTournament((prev) =>
+              prev
+                ? {
+                    ...prev,
+                    status: "completed",
+                    winner_id: lastCompletedMatch.winner_id,
+                    winner: lastCompletedMatch.winner as unknown as User,
+                  }
+                : null
+            );
+
+            // Set tournament completion state
+            setTournamentCompleted(true);
+            const winnerData = Array.isArray(lastCompletedMatch.winner)
+              ? lastCompletedMatch.winner[0]
+              : lastCompletedMatch.winner;
+
+            setChampion({
+              name: (winnerData as { display_name: string }).display_name,
+              id: lastCompletedMatch.winner_id,
+            });
+
+            console.log(
+              `Tournament completed! Champion: ${
+                (winnerData as { display_name: string }).display_name
+              }`
+            );
+          } else {
+            throw new Error("Could not determine tournament winner");
+          }
+        }
+      }
+
+      // Note: Next round match creation logic removed as it's not needed for single elimination
+      console.log("Match updated successfully");
+    } catch (error: unknown) {
+      if (error instanceof Error) {
+        console.error("Error updating match:", error);
+        setError("Failed to update match result");
+      }
+    }
+  };
+
+  const handleRoundRobinMatchUpdate = async (
+    matchId: string,
+    winnerId: string,
+    battles: BattleResult[]
+  ) => {
+    try {
+      console.log("Updating round robin match:", {
+        matchId,
         winnerId,
-        player1Score,
-        player2Score
+        battles,
+      });
+
+      // Update round robin match
+      const { data: matchData, error: matchError } = await supabase
+        .from("round_robin_matches")
+        .update({
+          winner_id: winnerId,
+          status: "completed",
+          completed_at: new Date().toISOString(),
+        })
+        .eq("id", matchId)
+        .select();
+
+      console.log("Match update result:", { matchData, matchError });
+
+      if (matchError) {
+        console.error("Match update error details:", matchError);
+        throw matchError;
+      }
+
+      // Insert battles if they exist
+      if (battles && battles.length > 0) {
+        console.log("Inserting battles:", battles);
+
+        const battlesWithMatchId = battles.map((battle, index) => ({
+          round_robin_match_id: matchId,
+          battle_number: index + 1,
+          winner_id: battle.winner_id,
+          finish_type: battle.finish_type,
+          player1_points: battle.player1_points,
+          player2_points: battle.player2_points,
+        }));
+
+        console.log("Battles with match ID:", battlesWithMatchId);
+
+        const { data: battlesData, error: battlesError } = await supabase
+          .from("battles")
+          .insert(battlesWithMatchId)
+          .select();
+
+        console.log("Battles insert result:", { battlesData, battlesError });
+
+        if (battlesError) {
+          console.error("Battles insert error details:", battlesError);
+          throw battlesError;
+        }
+      }
+
+      // Refresh data
+      await fetchRoundRobinMatches();
+      await updateRoundRobinStandings();
+
+      // Force refresh the page data to show updated standings
+      await fetchTournamentAndBracket();
+
+      console.log("Round robin match update completed successfully");
+    } catch (error: unknown) {
+      if (error instanceof Error) {
+        console.error("Error updating round robin match:", error);
+        console.error("Error details:", JSON.stringify(error, null, 2));
+        setError("Failed to update match");
+      }
+    }
+  };
+
+  const updateRoundRobinStandings = async () => {
+    if (!tournament?.tournament_participants) return;
+
+    try {
+      console.log("Updating round robin standings...");
+
+      // Get all completed round robin matches with battles
+      const { data: matches, error: matchesError } = await supabase
+        .from("round_robin_matches")
+        .select(
+          `
+          id,
+          player1_id,
+          player2_id,
+          winner_id,
+          status,
+          battles (
+            id,
+            winner_id,
+            finish_type,
+            player1_points,
+            player2_points
+          )
+        `
+        )
+        .eq("tournament_id", params.id)
+        .eq("status", "completed");
+
+      if (matchesError) throw matchesError;
+
+      console.log("Completed matches with battles:", matches);
+
+      // Calculate points for each participant
+      const participantStats = new Map<
+        string,
+        {
+          user_id: string;
+          total_points: number;
+          matches_played: number;
+          matches_won: number;
+          burst_points: number;
+          ringout_points: number;
+          spinout_points: number;
+        }
+      >();
+
+      // Initialize all participants with 0 stats
+      tournament.tournament_participants.forEach((participant) => {
+        participantStats.set(participant.user_id, {
+          user_id: participant.user_id,
+          total_points: 0,
+          matches_played: 0,
+          matches_won: 0,
+          burst_points: 0,
+          ringout_points: 0,
+          spinout_points: 0,
+        });
+      });
+
+      // Calculate stats from matches and battles
+      matches?.forEach((match) => {
+        if (!match.player1_id || !match.player2_id) return;
+
+        const player1Stats = participantStats.get(match.player1_id);
+        const player2Stats = participantStats.get(match.player2_id);
+
+        if (player1Stats && player2Stats) {
+          // Count matches played
+          player1Stats.matches_played++;
+          player2Stats.matches_played++;
+
+          // Count matches won
+          if (match.winner_id === match.player1_id) {
+            player1Stats.matches_won++;
+          } else if (match.winner_id === match.player2_id) {
+            player2Stats.matches_won++;
+          }
+
+          // Calculate points from battles - both players earn points from their battles
+          match.battles?.forEach((battle) => {
+            // Player 1 always gets their points from the battle
+            player1Stats.total_points += battle.player1_points;
+
+            // Player 2 always gets their points from the battle
+            player2Stats.total_points += battle.player2_points;
+
+            // Count finish type points for the battle winner
+            if (battle.winner_id === match.player1_id) {
+              if (battle.finish_type === "burst")
+                player1Stats.burst_points += 3;
+              else if (battle.finish_type === "ringout")
+                player1Stats.ringout_points += 2;
+              else if (battle.finish_type === "spinout")
+                player1Stats.spinout_points += 1;
+            } else if (battle.winner_id === match.player2_id) {
+              if (battle.finish_type === "burst")
+                player2Stats.burst_points += 3;
+              else if (battle.finish_type === "ringout")
+                player2Stats.ringout_points += 2;
+              else if (battle.finish_type === "spinout")
+                player2Stats.spinout_points += 1;
+            }
+          });
+        }
+      });
+
+      console.log("Calculated participant stats:", participantStats);
+
+      // Update tournament_participants table with calculated stats
+      for (const [userId, stats] of participantStats) {
+        const { error: updateError } = await supabase
+          .from("tournament_participants")
+          .update({
+            total_points: stats.total_points,
+            matches_played: stats.matches_played,
+            matches_won: stats.matches_won,
+            burst_points: stats.burst_points,
+            ringout_points: stats.ringout_points,
+            spinout_points: stats.spinout_points,
+          })
+          .eq("tournament_id", params.id)
+          .eq("user_id", userId);
+
+        if (updateError) {
+          console.error("Error updating participant stats:", updateError);
+        }
+      }
+
+      // Get updated participants for standings
+      const { data: updatedParticipants, error: participantsError } =
+        await supabase
+          .from("tournament_participants")
+          .select(
+            `
+          user_id,
+          total_points,
+          matches_played,
+          matches_won,
+          user:users(display_name)
+        `
+          )
+          .eq("tournament_id", params.id);
+
+      if (participantsError) throw participantsError;
+
+      const standings = calculateRoundRobinStandings(
+        updatedParticipants.map((p) => ({
+          user_id: p.user_id,
+          display_name: Array.isArray(p.user)
+            ? (p.user[0] as User)?.display_name || "Unknown"
+            : (p.user as User | undefined)?.display_name || "Unknown",
+          total_points: p.total_points,
+          matches_played: p.matches_played,
+          matches_won: p.matches_won,
+        }))
       );
 
-      setBracket(updatedBracket);
-
-      // Check if tournament is complete
-      if (updatedBracket.champion) {
-        // Update tournament status and winner
-        const { error: tournamentError } = await supabase
-          .from("tournaments")
-          .update({
-            status: "completed",
-            winner_id: updatedBracket.champion.user_id,
-          })
-          .eq("id", params.id);
-
-        if (tournamentError) {
-          console.error("Error updating tournament:", tournamentError);
-          throw tournamentError;
-        }
-
-        // Update tournament state
-        setTournament((prev) =>
-          prev
-            ? {
-                ...prev,
-                status: "completed",
-                winner_id: updatedBracket.champion?.user_id || null,
-                winner: updatedBracket.champion?.user,
-              }
-            : null
-        );
-
-        // Set tournament completion state
-        setTournamentCompleted(true);
-        setChampion({
-          name: updatedBracket.champion.user?.display_name || "Unknown",
-          id: updatedBracket.champion.user_id,
-        });
-
-        // Show success message for tournament completion
-        console.log(
-          `Tournament completed! Champion: ${updatedBracket.champion.user?.display_name}`
-        );
-
-        // Debug: Check if tournament was properly updated
-        const { data: updatedTournament, error: checkError } = await supabase
-          .from("tournaments")
-          .select("id, name, status, winner_id")
-          .eq("id", params.id)
-          .single();
-
-        if (checkError) {
-          console.error("Error checking tournament update:", checkError);
-        } else {
-          console.log("Tournament update check:", updatedTournament);
-        }
-
-        // Auto-hide the completion message after 5 seconds
-        setTimeout(() => {
-          setTournamentCompleted(false);
-          setChampion(null);
-        }, 5000);
+      setRoundRobinStandings(standings);
+      console.log("Updated standings:", standings);
+    } catch (error: unknown) {
+      if (error instanceof Error) {
+        console.error("Error updating standings:", error);
       }
-
-      // Create next round matches if needed
-      if (roundNumber < updatedBracket.rounds.length) {
-        const nextRound = updatedBracket.rounds[roundNumber];
-        const nextMatchNumber = Math.ceil(matchNumber / 2);
-        const nextMatch = nextRound.matches.find(
-          (m) => m.match_number === nextMatchNumber
-        );
-
-        if (nextMatch && nextMatch.player1 && nextMatch.player2) {
-          // Update next match in database
-          await supabase
-            .from("matches")
-            .update({
-              player1_id: nextMatch.player1?.user_id,
-              player2_id: nextMatch.player2?.user_id,
-            })
-            .eq("tournament_id", params.id)
-            .eq("round", roundNumber + 1)
-            .eq("match_number", nextMatchNumber);
-        }
-      }
-    } catch (error) {
-      console.error("Error updating match:", error);
-      setError("Failed to update match result");
     }
   };
 
   const canGenerateBracket = () => {
     return (
-      isAdmin &&
+      isAdmin() &&
       tournament?.status === "open" &&
-      (tournament?.participant_count || 0) >= 2
+      (tournament?.tournament_participants?.length || 0) >= 2
     );
   };
 
-  const isCreator = () => {
+  const isAdmin = () => {
     return user && tournament && tournament.created_by === user.id;
   };
 
@@ -524,8 +954,10 @@ export default function TournamentBracketPage() {
       await navigator.clipboard.writeText(getShareUrl());
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
-    } catch (error) {
-      console.error("Failed to copy:", error);
+    } catch (error: unknown) {
+      if (error instanceof Error) {
+        console.error("Failed to copy:", error);
+      }
     }
   };
 
@@ -549,6 +981,25 @@ export default function TournamentBracketPage() {
     };
   }, [showShareMenu]);
 
+  useEffect(() => {
+    if (params.id) {
+      fetchTournamentAndBracket();
+    }
+  }, [fetchTournamentAndBracket]);
+
+  useEffect(() => {
+    if (roundRobinMatches.length > 0) {
+      updateRoundRobinStandings();
+    }
+  }, [roundRobinMatches]);
+
+  useEffect(() => {
+    if (matches.length > 0) {
+      const newBracket = reconstructBracketFromMatches(matches);
+      setBracket(newBracket);
+    }
+  }, [matches]);
+
   if (loading) {
     return (
       <div className="min-h-screen bg-background">
@@ -570,12 +1021,11 @@ export default function TournamentBracketPage() {
             <h1 className="text-2xl font-bold tracking-tight mb-2">
               Tournament Not Found
             </h1>
-            <p className="text-muted-foreground mb-6">{error}</p>
+            <p className="text-muted-foreground mb-6">
+              {error || "The tournament you're looking for doesn't exist."}
+            </p>
             <Button asChild>
-              <Link href="/tournaments">
-                <ArrowLeft className="mr-2 h-4 w-4" />
-                Back to Tournaments
-              </Link>
+              <Link href="/tournaments">Back to Tournaments</Link>
             </Button>
           </div>
         </div>
@@ -583,7 +1033,10 @@ export default function TournamentBracketPage() {
     );
   }
 
-  const stats = bracket ? getTournamentStats(bracket) : null;
+  const currentPhase =
+    phases.find((p) => p.status === "in_progress") || phases[0];
+  const isRoundRobinPhase = currentPhase?.phase_type === "round_robin";
+  const isEliminationPhase = currentPhase?.phase_type === "elimination";
 
   return (
     <div className="min-h-screen bg-background">
@@ -591,209 +1044,291 @@ export default function TournamentBracketPage() {
 
       <div className="container mx-auto px-4 py-8">
         {/* Header */}
-        <div className="mb-8">
-          <Link
-            href={`/tournaments/${tournament.id}`}
-            className="inline-flex items-center gap-2 text-muted-foreground hover:text-foreground transition-colors mb-6"
-          >
-            <ArrowLeft className="h-4 w-4" />
-            Back to Tournament
-          </Link>
+        <div className="flex items-center justify-between mb-8">
+          <div>
+            <h1 className="text-3xl font-bold tracking-tight mb-2">
+              {tournament.name}
+            </h1>
+            <div className="flex items-center gap-4 text-sm text-muted-foreground">
+              <div className="flex items-center gap-1">
+                <Users className="h-4 w-4" />
+                {tournament.tournament_participants?.length || 0} participants
+              </div>
+              <div className="flex items-center gap-1">
+                <Calendar className="h-4 w-4" />
+                {new Date(tournament.start_date).toLocaleDateString()}
+              </div>
+              <Badge
+                variant={
+                  tournament.status === "completed" ? "default" : "secondary"
+                }
+              >
+                {tournament.status.replace("_", " ")}
+              </Badge>
+              {tournament.format === "beyblade_x" && (
+                <Badge
+                  variant="outline"
+                  className="bg-blue-50 text-blue-700 border-blue-200"
+                >
+                  Beyblade X
+                </Badge>
+              )}
+            </div>
+          </div>
 
-          <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
-            <div>
-              <h1 className="text-4xl font-bold tracking-tight mb-2">
-                {tournament.name}
-              </h1>
-              <div className="flex items-center gap-4 text-muted-foreground">
-                <div className="flex items-center gap-2">
-                  <Users className="h-4 w-4" />
-                  <span>{tournament.participant_count} participants</span>
-                </div>
+          {/* Share Button */}
+          <div className="relative" ref={shareMenuRef}>
+            <Button
+              variant="outline"
+              onClick={() => setShowShareMenu(!showShareMenu)}
+              className="flex items-center gap-2"
+            >
+              <Share2 className="h-4 w-4" />
+              Share
+            </Button>
+
+            {showShareMenu && (
+              <div className="absolute right-0 top-full mt-2 w-48 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg shadow-lg z-50">
+                <button
+                  onClick={copyToClipboard}
+                  className="w-full flex items-center gap-2 px-4 py-2 text-sm hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
+                >
+                  {copied ? (
+                    <>
+                      <Check className="h-4 w-4 text-green-500" />
+                      Copied!
+                    </>
+                  ) : (
+                    <>
+                      <Copy className="h-4 w-4" />
+                      Copy Link
+                    </>
+                  )}
+                </button>
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* Tournament Completion Alert */}
+        {tournamentCompleted && champion && (
+          <Alert className="mb-6 border-green-200 bg-green-50 dark:border-green-800 dark:bg-green-900/20">
+            <Crown className="h-4 w-4 text-green-600" />
+            <AlertDescription className="text-green-800 dark:text-green-200">
+              <strong>Tournament Complete!</strong> {champion.name} is the
+              champion! 🏆
+            </AlertDescription>
+          </Alert>
+        )}
+
+        {/* Phase Indicator */}
+        {tournament.format === "beyblade_x" && (
+          <Card className="mb-6">
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <Target className="h-5 w-5" />
+                Tournament Phase
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="flex items-center gap-4">
+                {tournament.tournament_participants?.length === 2 ? (
+                  <Badge variant={isEliminationPhase ? "default" : "secondary"}>
+                    Final Match
+                  </Badge>
+                ) : (
+                  <>
+                    <Badge
+                      variant={isRoundRobinPhase ? "default" : "secondary"}
+                    >
+                      Round Robin Phase
+                    </Badge>
+                    <Badge
+                      variant={isEliminationPhase ? "default" : "secondary"}
+                    >
+                      Elimination Phase
+                    </Badge>
+                  </>
+                )}
                 <Badge
                   variant={
                     tournament.status === "completed" ? "default" : "secondary"
                   }
                 >
-                  {tournament.status === "completed"
-                    ? "Tournament Complete"
-                    : tournament.status === "in_progress"
-                    ? "In Progress"
-                    : "Open"}
+                  Completed
                 </Badge>
               </div>
-            </div>
+            </CardContent>
+          </Card>
+        )}
 
-            {/* Share Button */}
-            <div className="relative" ref={shareMenuRef}>
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => setShowShareMenu(!showShareMenu)}
-                className="relative"
-              >
-                <Share2 className="mr-2 h-4 w-4" />
-                Share Bracket
-              </Button>
-
-              {showShareMenu && (
-                <div className="absolute top-full right-0 mt-2 bg-background border border-border rounded-lg shadow-lg p-2 z-50 min-w-[200px]">
-                  <div className="space-y-1">
-                    <button
-                      onClick={copyToClipboard}
-                      className="w-full flex items-center gap-3 px-3 py-2 text-sm hover:bg-muted rounded-md transition-colors"
-                    >
-                      {copied ? (
-                        <Check className="h-4 w-4 text-green-600" />
-                      ) : (
-                        <Copy className="h-4 w-4" />
-                      )}
-                      {copied ? "Copied!" : "Copy Link"}
-                    </button>
+        {/* Round Robin Phase */}
+        {isRoundRobinPhase && (
+          <Card className="mb-6">
+            <CardHeader>
+              <div className="flex items-center justify-between">
+                <CardTitle className="flex items-center gap-2">
+                  <TrendingUp className="h-5 w-5" />
+                  Round Robin Standings
+                </CardTitle>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={updateRoundRobinStandings}
+                  className="flex items-center gap-2"
+                >
+                  <RotateCcw className="h-4 w-4" />
+                  Refresh
+                </Button>
+              </div>
+            </CardHeader>
+            <CardContent>
+              <div className="space-y-2">
+                {roundRobinStandings.map((standing) => (
+                  <div
+                    key={standing.user_id}
+                    className="flex items-center justify-between p-3 bg-slate-50 dark:bg-slate-800 rounded-lg"
+                  >
+                    <div className="flex items-center gap-3">
+                      <Badge
+                        variant="outline"
+                        className="w-8 h-8 flex items-center justify-center p-0"
+                      >
+                        {standing.rank}
+                      </Badge>
+                      <span className="font-medium">
+                        {standing.display_name}
+                      </span>
+                    </div>
+                    <div className="flex items-center gap-4 text-sm text-muted-foreground">
+                      <span>{standing.total_points} pts</span>
+                      <span>
+                        {standing.matches_won}W -{" "}
+                        {standing.matches_played - standing.matches_won}L
+                      </span>
+                      <span>{standing.win_percentage}%</span>
+                    </div>
                   </div>
-                </div>
+                ))}
+              </div>
+            </CardContent>
+          </Card>
+        )}
+
+        {/* Round Robin Matches */}
+        {isRoundRobinPhase && roundRobinMatches.length > 0 && (
+          <Card className="mb-6">
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <Play className="h-5 w-5" />
+                Round Robin Matches
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="grid gap-4">
+                {roundRobinMatches.map((match) => (
+                  <div
+                    key={match.id}
+                    className={`flex items-center justify-between p-4 border rounded-lg cursor-pointer transition-colors ${
+                      match.status === "pending"
+                        ? "hover:bg-slate-50 dark:hover:bg-slate-800 hover:border-slate-300 dark:hover:border-slate-600"
+                        : ""
+                    }`}
+                    onClick={() => {
+                      if (match.status === "pending" && isAdmin()) {
+                        setSelectedMatch(match);
+                        setBattleModalOpen(true);
+                      }
+                    }}
+                  >
+                    <div className="flex items-center gap-4">
+                      <span className="font-medium">
+                        {match.player1?.display_name || "TBD"}
+                      </span>
+                      <span className="text-muted-foreground">vs</span>
+                      <span className="font-medium">
+                        {match.player2?.display_name || "TBD"}
+                      </span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <Badge
+                        variant={
+                          match.status === "completed" ? "default" : "secondary"
+                        }
+                      >
+                        {match.status}
+                      </Badge>
+                      {match.status === "pending" && isAdmin() && (
+                        <span className="text-xs text-muted-foreground">
+                          Click to record result
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </CardContent>
+          </Card>
+        )}
+
+        {/* Elimination Bracket */}
+        {isEliminationPhase && bracket && (
+          <div className="space-y-6">
+            <div className="flex items-center justify-between">
+              <h2 className="text-2xl font-bold">Tournament Bracket</h2>
+              {canGenerateBracket() && (
+                <Button onClick={handleGenerateBracket}>
+                  Generate Bracket
+                </Button>
               )}
             </div>
-          </div>
-        </div>
-
-        {/* Tournament Stats */}
-        {stats && (
-          <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-8">
-            <Card>
-              <CardContent className="p-4">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <p className="text-sm text-muted-foreground">Progress</p>
-                    <p className="text-2xl font-bold">
-                      {Math.round(stats.progress)}%
-                    </p>
-                  </div>
-                  <Trophy className="h-8 w-8 text-muted-foreground" />
-                </div>
-                <Progress value={stats.progress} className="mt-2" />
-              </CardContent>
-            </Card>
-            <Card>
-              <CardContent className="p-4">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <p className="text-sm text-muted-foreground">Completed</p>
-                    <p className="text-2xl font-bold">
-                      {stats.completedMatches}
-                    </p>
-                  </div>
-                  <Trophy className="h-8 w-8 text-green-500" />
-                </div>
-              </CardContent>
-            </Card>
-            <Card>
-              <CardContent className="p-4">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <p className="text-sm text-muted-foreground">Pending</p>
-                    <p className="text-2xl font-bold">{stats.pendingMatches}</p>
-                  </div>
-                  <Clock className="h-8 w-8 text-blue-500" />
-                </div>
-              </CardContent>
-            </Card>
-            <Card>
-              <CardContent className="p-4">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <p className="text-sm text-muted-foreground">Total</p>
-                    <p className="text-2xl font-bold">{stats.totalMatches}</p>
-                  </div>
-                  <Users className="h-8 w-8 text-muted-foreground" />
-                </div>
-              </CardContent>
-            </Card>
+            <BracketVisualization
+              bracket={bracket}
+              isAdmin={!!isAdmin()}
+              onMatchUpdate={handleMatchUpdate}
+            />
           </div>
         )}
 
-        {/* Success Alert - Tournament Completed */}
-        {tournamentCompleted && champion && (
-          <Alert className="mb-6 bg-gradient-to-r from-green-50 to-emerald-50 dark:from-green-900/20 dark:to-emerald-900/20 border-green-300 dark:border-green-600">
-            <Trophy className="h-4 w-4 text-green-600 dark:text-green-400" />
-            <AlertDescription className="text-green-800 dark:text-green-200">
-              <span className="font-bold">Tournament Complete! 🏆</span>{" "}
-              <span className="font-semibold">{champion.name}</span> is the new
-              champion! Their stats have been updated in the leaderboard.
-            </AlertDescription>
-          </Alert>
+        {/* Generate Tournament Button */}
+        {canGenerateBracket() && tournament.format === "beyblade_x" && (
+          <Card className="mt-6">
+            <CardContent className="pt-6">
+              <Button
+                onClick={handleGenerateBeybladeXTournament}
+                className="w-full"
+              >
+                Start Beyblade X Tournament
+              </Button>
+            </CardContent>
+          </Card>
         )}
 
-        {/* Error Alert */}
+        {/* Error Display */}
         {error && (
-          <Alert variant="destructive" className="mb-6">
-            <AlertTriangle className="h-4 w-4" />
+          <Alert className="mt-6" variant="destructive">
+            <AlertCircle className="h-4 w-4" />
             <AlertDescription>{error}</AlertDescription>
           </Alert>
         )}
 
-        {/* Bracket Generation */}
-        {!bracket && tournament.status === "open" && (
-          <Card className="mb-8">
-            <CardHeader>
-              <CardTitle>Generate Tournament Bracket</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="text-center py-8">
-                <Trophy className="h-16 w-16 mx-auto text-muted-foreground/50 mb-4" />
-                <h3 className="text-lg font-semibold mb-2">Ready to Start?</h3>
-                <p className="text-muted-foreground mb-6">
-                  Generate the tournament bracket to begin matches with{" "}
-                  {tournament.participant_count} participants.
-                </p>
-                {canGenerateBracket() ? (
-                  <Button
-                    onClick={handleGenerateBracket}
-                    disabled={generating}
-                    size="lg"
-                  >
-                    {generating ? (
-                      <>
-                        <RotateCcw className="mr-2 h-5 w-5 animate-spin" />
-                        Generating Bracket...
-                      </>
-                    ) : (
-                      <>
-                        <Play className="mr-2 h-5 w-5" />
-                        Generate Bracket
-                      </>
-                    )}
-                  </Button>
-                ) : (
-                  <div className="space-y-2">
-                    <p className="text-sm text-muted-foreground">
-                      {!isAdmin
-                        ? "Only tournament organizers can generate brackets."
-                        : (tournament?.participant_count || 0) < 2
-                        ? "Need at least 2 participants."
-                        : "Tournament must be open to generate bracket."}
-                    </p>
-                  </div>
-                )}
-              </div>
-            </CardContent>
-          </Card>
-        )}
-
-        {/* Bracket Visualization */}
-        {bracket && (
-          <Card>
-            <CardHeader>
-              <CardTitle>Tournament Bracket</CardTitle>
-            </CardHeader>
-            <CardContent className="p-6">
-              <BracketVisualization
-                bracket={bracket}
-                isAdmin={isCreator() || isAdmin}
-                onMatchUpdate={handleMatchUpdate}
-              />
-            </CardContent>
-          </Card>
+        {/* Battle Scoring Modal */}
+        {selectedMatch && (
+          <BattleScoringModal
+            isOpen={battleModalOpen}
+            onClose={() => {
+              setBattleModalOpen(false);
+              setSelectedMatch(null);
+            }}
+            onSave={(winnerId, battles) => {
+              handleRoundRobinMatchUpdate(selectedMatch.id, winnerId, battles);
+            }}
+            player1={selectedMatch.player1 as User | undefined}
+            player2={selectedMatch.player2 as User | undefined}
+            matchId={selectedMatch.id}
+            isAdmin={!!isAdmin()}
+            completed={!!(selectedMatch.status === "completed")}
+          />
         )}
       </div>
     </div>

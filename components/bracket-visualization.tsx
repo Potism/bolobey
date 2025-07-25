@@ -1,23 +1,26 @@
 "use client";
 
 import { useState } from "react";
-import {
-  TournamentBracket,
-  BracketMatch,
-  BracketParticipant,
-} from "@/lib/bracket";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import {
   Dialog,
   DialogContent,
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { Trophy, Crown, Zap, User, Clock, Edit } from "lucide-react";
+import {
+  User,
+  Trophy,
+  Edit,
+  Target,
+  RotateCcw,
+  Crown,
+  Flame,
+} from "lucide-react";
+import { BracketMatch, BattleResult, TournamentBracket } from "@/lib/types";
 
 interface BracketVisualizationProps {
   bracket: TournamentBracket;
@@ -27,7 +30,8 @@ interface BracketVisualizationProps {
     matchNumber: number,
     winnerId: string,
     player1Score: number,
-    player2Score: number
+    player2Score: number,
+    battles?: BattleResult[]
   ) => Promise<void>;
 }
 
@@ -37,363 +41,362 @@ export function BracketVisualization({
   onMatchUpdate,
 }: BracketVisualizationProps) {
   const [selectedMatch, setSelectedMatch] = useState<BracketMatch | null>(null);
-  const [isUpdating, setIsUpdating] = useState(false);
   const [player1Score, setPlayer1Score] = useState(0);
   const [player2Score, setPlayer2Score] = useState(0);
   const [winnerId, setWinnerId] = useState("");
+  const [isUpdating, setIsUpdating] = useState(false);
+  const [battles, setBattles] = useState<BattleResult[]>([]);
+  const [currentBattle, setCurrentBattle] = useState<BattleResult>({
+    winner_id: "",
+    finish_type: "burst",
+    player1_points: 0,
+    player2_points: 0,
+  });
 
   const handleMatchClick = (match: BracketMatch) => {
-    if (isAdmin && match.player1 && match.player2 && !match.is_bye) {
-      setSelectedMatch(match);
-      setPlayer1Score(match.player1_score);
-      setPlayer2Score(match.player2_score);
-      setWinnerId(match.winner?.user_id || "");
-    }
+    if (!isAdmin || match.status === "completed") return;
+    setSelectedMatch(match);
+    setPlayer1Score(match.player1_score || 0);
+    setPlayer2Score(match.player2_score || 0);
+    setWinnerId(match.winner?.id || "");
+    setBattles([]);
+    setCurrentBattle({
+      winner_id: "",
+      finish_type: "burst",
+      player1_points: 0,
+      player2_points: 0,
+    });
   };
 
   const handleScoreUpdate = async () => {
     if (!selectedMatch || !onMatchUpdate) return;
-
-    // Determine winner based on scores
-    let winner = winnerId;
-    if (!winner) {
-      if (player1Score > player2Score) {
-        winner = selectedMatch.player1?.user_id || "";
-      } else if (player2Score > player1Score) {
-        winner = selectedMatch.player2?.user_id || "";
-      } else {
-        // Tie - require manual selection
-        return;
-      }
-    }
-
     setIsUpdating(true);
     try {
       await onMatchUpdate(
         selectedMatch.round,
         selectedMatch.match_number,
-        winner,
+        winnerId,
         player1Score,
-        player2Score
+        player2Score,
+        battles
       );
       setSelectedMatch(null);
     } catch (error) {
-      console.error("Failed to update match:", error);
+      console.error("Error updating match:", error);
     } finally {
       setIsUpdating(false);
     }
   };
 
+  const addBattle = () => {
+    if (!currentBattle.winner_id || !currentBattle.finish_type) return;
+    setBattles([...battles, currentBattle]);
+    setCurrentBattle({
+      winner_id: "",
+      finish_type: "burst",
+      player1_points: 0,
+      player2_points: 0,
+    });
+  };
+
+  const removeBattle = (index: number) => {
+    setBattles(battles.filter((_, i) => i !== index));
+  };
+
   const getMatchStatus = (match: BracketMatch) => {
-    if (match.is_bye) return "bye";
     if (match.status === "completed") return "completed";
     if (match.player1 && match.player2) return "ready";
-    return "waiting";
+    return "pending";
   };
 
   const getMatchCard = (match: BracketMatch) => {
     const status = getMatchStatus(match);
-    const isClickable = isAdmin && status === "ready";
+    const isCompleted = status === "completed";
+    const isReady = status === "ready";
 
     return (
       <div
-        key={`${match.round}-${match.match_number}`}
+        key={match.id}
         className={`
-          relative transition-all duration-300 cursor-pointer group
-          ${isClickable ? "hover:scale-105" : ""}
+          relative w-80 h-40 rounded-lg border-2 transition-all duration-200 cursor-pointer
+          ${
+            isCompleted
+              ? "bg-green-50 dark:bg-green-900/20 border-green-300 dark:border-green-600 shadow-sm"
+              : isReady
+              ? "bg-white dark:bg-slate-800 border-slate-300 dark:border-slate-600 hover:border-slate-400 dark:hover:border-slate-500 hover:shadow-md"
+              : "bg-slate-50 dark:bg-slate-800/50 border-slate-200 dark:border-slate-700"
+          }
         `}
         onClick={() => handleMatchClick(match)}
       >
-        {/* Match Container */}
+        {/* Match Number Badge */}
+        <div className="absolute -top-3 -left-3">
+          <Badge
+            variant="secondary"
+            className={`
+              text-xs font-bold px-2 py-1 rounded-full
+              ${
+                isCompleted
+                  ? "bg-green-200 dark:bg-green-800 text-green-800 dark:text-green-200"
+                  : "bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-300"
+              }
+            `}
+          >
+            {match.bracket_type === "upper"
+              ? "U"
+              : match.bracket_type === "lower"
+              ? "L"
+              : "F"}
+            -{match.round}.{match.match_number}
+          </Badge>
+        </div>
+
+        {/* Status Badge */}
+        <div className="absolute -top-3 -right-3">
+          <Badge
+            className={`
+              text-xs font-bold px-2 py-1 rounded-full
+              ${
+                isCompleted
+                  ? "bg-green-600 text-white"
+                  : isReady
+                  ? "bg-slate-600 text-white"
+                  : "bg-slate-400 text-white"
+              }
+            `}
+          >
+            {isCompleted ? "Completed" : isReady ? "Ready" : "Pending"}
+          </Badge>
+        </div>
+
+        {/* Edit Button for Ready Matches */}
+        {isReady && isAdmin && (
+          <div className="absolute top-2 right-2">
+            <Button
+              size="sm"
+              variant="outline"
+              className="w-8 h-8 p-0 rounded-full bg-white/80 dark:bg-slate-800/80 border-2 hover:bg-white dark:hover:bg-slate-800"
+            >
+              <Edit className="w-4 h-4" />
+            </Button>
+          </div>
+        )}
+
+        {/* Player Slots */}
+        <div className="p-4 space-y-3">
+          <PlayerSlot
+            player={match.player1}
+            score={match.player1_score}
+            isWinner={match.winner?.id === match.player1?.id}
+            isCompleted={isCompleted}
+          />
+          <PlayerSlot
+            player={match.player2}
+            score={match.player2_score}
+            isWinner={match.winner?.id === match.player2?.id}
+            isCompleted={isCompleted}
+          />
+        </div>
+
+        {/* Winner Indicator */}
+        {isCompleted && match.winner && (
+          <div className="absolute -bottom-2 left-1/2 transform -translate-x-1/2">
+            <div className="bg-green-600 text-white px-3 py-1 rounded-full text-xs font-bold flex items-center gap-1">
+              <Crown className="w-3 h-3" />
+              {match.winner.display_name}
+            </div>
+          </div>
+        )}
+      </div>
+    );
+  };
+
+  const getBracketSection = (
+    matches: BracketMatch[],
+    title: string,
+    bracketType: "upper" | "lower" | "final"
+  ) => {
+    const rounds = new Map<number, BracketMatch[]>();
+
+    matches.forEach((match) => {
+      if (!rounds.has(match.round)) {
+        rounds.set(match.round, []);
+      }
+      rounds.get(match.round)!.push(match);
+    });
+
+    const getBracketColor = (type: string) => {
+      switch (type) {
+        case "upper":
+          return "border-slate-300 dark:border-slate-600 bg-slate-50 dark:bg-slate-800/50";
+        case "lower":
+          return "border-slate-300 dark:border-slate-600 bg-slate-50 dark:bg-slate-800/50";
+        case "final":
+          return "border-slate-400 dark:border-slate-500 bg-slate-100 dark:bg-slate-700/50";
+        default:
+          return "border-slate-300 dark:border-slate-600 bg-slate-50 dark:bg-slate-800/50";
+      }
+    };
+
+    return (
+      <div className="space-y-8">
         <div
-          className={`
-            relative overflow-hidden rounded-lg border-2 shadow-lg
-            ${
-              status === "completed"
-                ? "bg-gradient-to-br from-emerald-50 to-green-50 dark:from-emerald-900/20 dark:to-green-900/20 border-emerald-300 dark:border-emerald-600 shadow-emerald-500/20"
-                : ""
-            }
-            ${
-              status === "ready"
-                ? "bg-gradient-to-br from-blue-50 to-indigo-50 dark:from-blue-900/20 dark:to-indigo-900/20 border-blue-300 dark:border-blue-600 shadow-blue-500/20 hover:shadow-xl hover:border-blue-400 dark:hover:border-blue-500"
-                : ""
-            }
-            ${
-              status === "waiting"
-                ? "bg-gradient-to-br from-slate-50 to-gray-50 dark:from-slate-900/20 dark:to-gray-900/20 border-slate-300 dark:border-slate-600"
-                : ""
-            }
-            ${
-              status === "bye"
-                ? "bg-gradient-to-br from-amber-50 to-yellow-50 dark:from-amber-900/20 dark:to-yellow-900/20 border-amber-300 dark:border-amber-600 shadow-amber-500/20"
-                : ""
-            }
-          `}
+          className={`text-center p-4 rounded-lg border-2 ${getBracketColor(
+            bracketType
+          )}`}
         >
-          {match.is_bye ? (
-            <div className="p-6 text-center">
-              <div className="w-12 h-12 mx-auto mb-3 bg-gradient-to-br from-amber-200 to-yellow-200 dark:from-amber-800/50 dark:to-yellow-800/50 rounded-full flex items-center justify-center shadow-sm">
-                <Zap className="h-6 w-6 text-amber-700 dark:text-amber-300" />
-              </div>
-              <p className="text-sm font-bold text-amber-800 dark:text-amber-200">
-                Bye
-              </p>
-              {match.winner && (
-                <p className="text-xs text-muted-foreground mt-1 font-medium">
-                  {match.winner.user?.display_name}
-                </p>
-              )}
-            </div>
-          ) : (
-            <div className="p-4">
-              {/* Match Number */}
-              <div className="absolute top-2 right-2">
-                <Badge
-                  variant="outline"
-                  className="text-xs font-bold bg-background/90 backdrop-blur-sm border"
-                >
-                  M{match.match_number}
-                </Badge>
-              </div>
+          <h3 className="text-xl font-bold text-slate-800 dark:text-slate-200">
+            {title}
+          </h3>
+        </div>
 
-              {/* Players */}
-              <div className="space-y-2">
-                <PlayerSlot
-                  player={match.player1}
-                  score={match.player1_score}
-                  isWinner={match.winner?.user_id === match.player1?.user_id}
-                  isCompleted={match.status === "completed"}
-                />
-                <div className="h-px bg-gradient-to-r from-transparent via-border to-transparent" />
-                <PlayerSlot
-                  player={match.player2}
-                  score={match.player2_score}
-                  isWinner={match.winner?.user_id === match.player2?.user_id}
-                  isCompleted={match.status === "completed"}
-                />
-              </div>
+        <div className="relative">
+          {/* SVG for connecting lines */}
+          <svg
+            className="absolute inset-0 w-full h-full pointer-events-none"
+            style={{ zIndex: 1 }}
+          >
+            {Array.from(rounds.entries()).map(
+              ([round, roundMatches], roundIndex) => {
+                if (roundIndex === rounds.size - 1) return null; // No lines after last round
 
-              {/* Status indicator */}
-              <div className="flex items-center justify-center mt-3">
-                {status === "completed" && (
-                  <Badge className="bg-emerald-100 text-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-200 border-emerald-200 dark:border-emerald-700 text-xs">
-                    <Trophy className="w-3 h-3 mr-1" />
-                    Completed
-                  </Badge>
-                )}
-                {status === "ready" && (
-                  <Badge className="bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-200 border-blue-200 dark:border-blue-700 text-xs group-hover:bg-blue-200 dark:group-hover:bg-blue-800/40 transition-colors">
-                    <Clock className="w-3 h-3 mr-1" />
-                    Ready
-                  </Badge>
-                )}
-                {status === "waiting" && (
-                  <Badge variant="secondary" className="text-xs">
-                    <Clock className="w-3 h-3 mr-1" />
-                    Waiting
-                  </Badge>
-                )}
-                {isAdmin && status === "ready" && (
-                  <Edit className="w-3 h-3 ml-2 opacity-60 group-hover:opacity-100 transition-opacity" />
-                )}
+                const nextRound = Array.from(rounds.entries())[roundIndex + 1];
+                if (!nextRound) return null;
+
+                const nextRoundMatches = nextRound[1];
+
+                return roundMatches.map((match, matchIndex) => {
+                  const nextMatch =
+                    nextRoundMatches[Math.floor(matchIndex / 2)];
+                  if (!nextMatch) return null;
+
+                  // Calculate positions (simplified - you might want to make this more precise)
+                  const currentX = roundIndex * 320 + 160; // 320px per round, 160px center of match
+                  const currentY = matchIndex * 200 + 100; // 200px per match, 100px center of match card
+                  const nextX = (roundIndex + 1) * 320 + 160;
+                  const nextY = Math.floor(matchIndex / 2) * 200 + 100;
+
+                  return (
+                    <line
+                      key={`line-${round}-${matchIndex}`}
+                      x1={currentX}
+                      y1={currentY}
+                      x2={nextX}
+                      y2={nextY}
+                      stroke="#94a3b8"
+                      strokeWidth="2"
+                      strokeDasharray="5,5"
+                      opacity="0.6"
+                    />
+                  );
+                });
+              }
+            )}
+          </svg>
+
+          <div className="flex gap-16 relative" style={{ zIndex: 2 }}>
+            {Array.from(rounds.entries()).map(([round, roundMatches]) => (
+              <div key={round} className="space-y-6">
+                <div className="text-center p-2 bg-slate-100 dark:bg-slate-800 rounded-lg border border-slate-200 dark:border-slate-700">
+                  <h4 className="font-bold text-sm text-slate-700 dark:text-slate-300">
+                    Round {round}
+                  </h4>
+                </div>
+                <div className="space-y-6">
+                  {roundMatches.map(getMatchCard)}
+                </div>
               </div>
-            </div>
-          )}
+            ))}
+          </div>
         </div>
       </div>
     );
   };
 
   return (
-    <div className="w-full">
-      {/* Champion */}
-      {bracket.champion && (
-        <div className="text-center mb-12">
-          <Card className="max-w-md mx-auto bg-gradient-to-br from-yellow-50 via-amber-50 to-orange-50 dark:from-yellow-900/20 dark:via-amber-900/20 dark:to-orange-900/20 border-2 border-yellow-300 dark:border-yellow-600 shadow-2xl">
-            <CardContent className="p-8">
-              <div className="flex items-center justify-center gap-4 mb-6">
-                <Crown className="h-10 w-10 text-yellow-600 dark:text-yellow-400" />
-                <h2 className="text-3xl font-bold bg-gradient-to-r from-yellow-600 to-orange-600 dark:from-yellow-400 dark:to-orange-400 bg-clip-text text-transparent">
-                  Champion
-                </h2>
-                <Crown className="h-10 w-10 text-yellow-600 dark:text-yellow-400" />
-              </div>
-              <div className="flex items-center justify-center gap-4">
-                <div className="w-16 h-16 rounded-full bg-gradient-to-br from-yellow-200 to-amber-200 dark:from-yellow-800/50 dark:to-amber-800/50 flex items-center justify-center shadow-lg">
-                  <User className="h-8 w-8 text-yellow-700 dark:text-yellow-300" />
-                </div>
-                <div className="text-left">
-                  <span className="text-xl font-bold text-yellow-800 dark:text-yellow-200">
-                    {bracket.champion.user?.display_name}
-                  </span>
-                  <p className="text-sm text-muted-foreground">
-                    Tournament Winner
-                  </p>
-                </div>
-              </div>
-              <div className="mt-6 pt-4 border-t border-yellow-200 dark:border-yellow-700">
-                <div className="flex items-center justify-center gap-2 text-sm text-muted-foreground">
-                  <Trophy className="h-4 w-4" />
-                  <span>🏆 Tournament Complete</span>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-        </div>
-      )}
+    <div className="space-y-12">
+      {/* Upper Bracket */}
+      {bracket.upper_bracket.length > 0 &&
+        getBracketSection(
+          bracket.upper_bracket,
+          "Upper Bracket (Winners)",
+          "upper"
+        )}
 
-      {/* Bracket */}
-      <div className="relative">
-        <div className="flex gap-16 overflow-x-auto pb-8">
-          {bracket.rounds.map((round, roundIndex) => (
-            <div
-              key={round.round}
-              className="flex flex-col items-center gap-8 min-w-max relative"
-            >
-              {/* Round Header */}
-              <div className="text-center mb-8">
-                <div className="bg-gradient-to-r from-primary/10 to-primary/5 dark:from-primary/20 dark:to-primary/10 rounded-lg p-4 border border-primary/20">
-                  <h3 className="text-xl font-bold text-primary mb-2">
-                    {round.name}
-                  </h3>
-                  <Badge
-                    variant="outline"
-                    className="text-xs font-mono bg-background/80 backdrop-blur-sm"
-                  >
-                    Round {round.round}
-                  </Badge>
-                </div>
-              </div>
+      {/* Lower Bracket */}
+      {bracket.lower_bracket.length > 0 &&
+        getBracketSection(
+          bracket.lower_bracket,
+          "Lower Bracket (Losers)",
+          "lower"
+        )}
 
-              {/* Matches */}
-              <div className="flex flex-col gap-12">
-                {round.matches.map((match) => (
-                  <div key={match.id} className="relative">
-                    {getMatchCard(match)}
+      {/* Final Matches */}
+      {bracket.final_matches.length > 0 &&
+        getBracketSection(bracket.final_matches, "Grand Finals", "final")}
 
-                    {/* Vertical lines extending from matches */}
-                    {roundIndex < bracket.rounds.length - 1 && (
-                      <div className="absolute top-1/2 -right-8 w-16 h-px bg-gradient-to-r from-primary/40 to-transparent" />
-                    )}
-
-                    {/* Horizontal lines connecting to next round */}
-                    {roundIndex < bracket.rounds.length - 1 && (
-                      <div className="absolute top-1/2 -right-8 w-8 h-px bg-primary/40" />
-                    )}
-                  </div>
-                ))}
-              </div>
-
-              {/* Connecting lines for next rounds */}
-              {roundIndex < bracket.rounds.length - 1 && (
-                <div className="absolute left-0 top-0 w-full h-full pointer-events-none">
-                  <svg className="w-full h-full">
-                    {round.matches.map((match, matchIndex) => {
-                      const nextRoundMatchIndex = Math.floor(matchIndex / 2);
-                      const currentMatchY = 140 + matchIndex * 144; // Center of current match
-                      const nextMatchY = 140 + nextRoundMatchIndex * 144; // Center of next match
-
-                      // Calculate positions based on card width and spacing
-                      const cardWidth = 320; // Approximate card width
-                      const gap = 64; // Gap between rounds
-                      const x1 = cardWidth + gap / 2; // End of current round
-                      const x2 = cardWidth + gap; // Start of next round
-                      const x3 = cardWidth + gap + gap / 2; // Middle of next round
-
-                      return (
-                        <g
-                          key={`connector-${round.round}-${match.match_number}`}
-                        >
-                          {/* Main connecting line */}
-                          <path
-                            d={`M ${x1} ${currentMatchY} L ${x2} ${currentMatchY} L ${x2} ${nextMatchY} L ${x3} ${nextMatchY}`}
-                            stroke="currentColor"
-                            strokeWidth="2"
-                            fill="none"
-                            className="text-primary/40"
-                            strokeLinecap="round"
-                          />
-
-                          {/* Connection dots */}
-                          <circle
-                            cx={x2}
-                            cy={currentMatchY}
-                            r="2"
-                            fill="currentColor"
-                            className="text-primary/60"
-                          />
-                          <circle
-                            cx={x2}
-                            cy={nextMatchY}
-                            r="2"
-                            fill="currentColor"
-                            className="text-primary/60"
-                          />
-
-                          {/* Vertical line from current match */}
-                          <line
-                            x1={x1}
-                            y1={currentMatchY}
-                            x2={x1}
-                            y2={currentMatchY}
-                            stroke="currentColor"
-                            strokeWidth="2"
-                            className="text-primary/40"
-                          />
-
-                          {/* Vertical line to next match */}
-                          <line
-                            x1={x3}
-                            y1={nextMatchY}
-                            x2={x3}
-                            y2={nextMatchY}
-                            stroke="currentColor"
-                            strokeWidth="2"
-                            className="text-primary/40"
-                          />
-                        </g>
-                      );
-                    })}
-                  </svg>
-                </div>
-              )}
-            </div>
-          ))}
+      {/* Bracket Structure Explanation */}
+      <div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg p-4">
+        <h3 className="font-bold text-blue-800 dark:text-blue-200 mb-2">
+          🏆 Tournament Bracket Structure
+        </h3>
+        <div className="text-sm text-blue-700 dark:text-blue-300 space-y-1">
+          <p>
+            • <strong>Upper Bracket:</strong> Winners advance, losers drop to
+            Lower Bracket
+          </p>
+          <p>
+            • <strong>Lower Bracket:</strong> Losers from Upper + losers from
+            Lower (double elimination)
+          </p>
+          <p>
+            • <strong>Grand Finals:</strong> Upper Bracket winner vs Lower
+            Bracket winner
+          </p>
+          <p>
+            • <strong>Click on matches</strong> to record results and advance
+            players
+          </p>
         </div>
       </div>
 
-      {/* Match Update Dialog */}
+      {/* Enhanced Match Update Dialog */}
       <Dialog
         open={!!selectedMatch}
         onOpenChange={() => setSelectedMatch(null)}
       >
-        <DialogContent className="sm:max-w-lg bg-white dark:bg-slate-900 border-2 border-slate-200 dark:border-slate-700 shadow-2xl mx-4 p-0">
-          <DialogHeader className="pb-4 px-6 pt-6">
-            <DialogTitle className="text-2xl font-bold text-center">
-              Update Match Result
+        <DialogContent className="max-w-[95vw] sm:max-w-2xl md:max-w-3xl lg:max-w-4xl max-h-[90vh] overflow-y-auto bg-white dark:bg-slate-900 border-2 border-slate-200 dark:border-slate-700 shadow-2xl mx-2 sm:mx-4 p-0">
+          <DialogHeader className="pb-4 px-4 sm:px-6 pt-4 sm:pt-6">
+            <DialogTitle className="text-xl sm:text-2xl font-bold text-center">
+              Update Match Result - Beyblade X
             </DialogTitle>
           </DialogHeader>
           {selectedMatch && (
-            <div className="space-y-8 px-6 pb-6">
+            <div className="space-y-6 sm:space-y-8 px-4 sm:px-6 pb-4 sm:pb-6">
               {/* Match Info */}
-              <div className="text-center p-6 bg-gradient-to-r from-primary/5 to-primary/10 dark:from-primary/10 dark:to-primary/20 rounded-xl border border-primary/20">
-                <p className="text-sm text-muted-foreground font-medium">
-                  Match #{selectedMatch.match_number}
+              <div className="text-center p-4 sm:p-6 bg-slate-50 dark:bg-slate-800 rounded-lg border border-slate-200 dark:border-slate-700">
+                <p className="text-xs sm:text-sm text-slate-600 dark:text-slate-400 font-medium">
+                  {selectedMatch.bracket_type === "upper"
+                    ? "Upper Bracket"
+                    : selectedMatch.bracket_type === "lower"
+                    ? "Lower Bracket"
+                    : "Grand Final"}
                 </p>
-                <p className="text-lg font-bold text-primary">
-                  Round {selectedMatch.round}
+                <p className="text-base sm:text-lg font-bold text-slate-800 dark:text-slate-200">
+                  Round {selectedMatch.round} - Match{" "}
+                  {selectedMatch.match_number}
                 </p>
               </div>
 
-              {/* Players and Scores */}
-              <div className="grid grid-cols-2 gap-8">
-                <div className="space-y-4">
+              {/* Players and Basic Scores */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 sm:gap-6 lg:gap-8">
+                <div className="space-y-3 sm:space-y-4">
                   <div className="text-center">
                     <Label className="text-sm font-medium text-muted-foreground">
                       Player 1
                     </Label>
-                    <p className="font-bold text-xl mt-2 text-foreground">
-                      {selectedMatch.player1?.user?.display_name}
+                    <p className="font-bold text-lg sm:text-xl mt-1 sm:mt-2 text-foreground break-words">
+                      {selectedMatch.player1?.display_name}
                     </p>
                   </div>
                   <Input
@@ -403,24 +406,22 @@ export function BracketVisualization({
                     onChange={(e) =>
                       setPlayer1Score(parseInt(e.target.value) || 0)
                     }
-                    className="text-center text-xl font-mono font-bold h-12 text-lg"
+                    className="text-center text-lg sm:text-xl font-mono font-bold h-10 sm:h-12"
                     placeholder="0"
                   />
                   <Button
                     variant={
-                      winnerId === selectedMatch.player1?.user_id
+                      winnerId === selectedMatch.player1?.id
                         ? "default"
                         : "outline"
                     }
                     size="lg"
-                    onClick={() =>
-                      setWinnerId(selectedMatch.player1?.user_id || "")
-                    }
-                    className="w-full h-12"
+                    onClick={() => setWinnerId(selectedMatch.player1?.id || "")}
+                    className="w-full h-10 sm:h-12 text-sm sm:text-base"
                   >
-                    {winnerId === selectedMatch.player1?.user_id ? (
+                    {winnerId === selectedMatch.player1?.id ? (
                       <>
-                        <Trophy className="w-5 h-5 mr-2" />
+                        <Trophy className="w-4 h-4 sm:w-5 sm:h-5 mr-1 sm:mr-2" />
                         Winner
                       </>
                     ) : (
@@ -429,13 +430,13 @@ export function BracketVisualization({
                   </Button>
                 </div>
 
-                <div className="space-y-4">
+                <div className="space-y-3 sm:space-y-4">
                   <div className="text-center">
                     <Label className="text-sm font-medium text-muted-foreground">
                       Player 2
                     </Label>
-                    <p className="font-bold text-xl mt-2 text-foreground">
-                      {selectedMatch.player2?.user?.display_name}
+                    <p className="font-bold text-lg sm:text-xl mt-1 sm:mt-2 text-foreground break-words">
+                      {selectedMatch.player2?.display_name}
                     </p>
                   </div>
                   <Input
@@ -445,24 +446,22 @@ export function BracketVisualization({
                     onChange={(e) =>
                       setPlayer2Score(parseInt(e.target.value) || 0)
                     }
-                    className="text-center text-xl font-mono font-bold h-12 text-lg"
+                    className="text-center text-lg sm:text-xl font-mono font-bold h-10 sm:h-12"
                     placeholder="0"
                   />
                   <Button
                     variant={
-                      winnerId === selectedMatch.player2?.user_id
+                      winnerId === selectedMatch.player2?.id
                         ? "default"
                         : "outline"
                     }
                     size="lg"
-                    onClick={() =>
-                      setWinnerId(selectedMatch.player2?.user_id || "")
-                    }
-                    className="w-full h-12"
+                    onClick={() => setWinnerId(selectedMatch.player2?.id || "")}
+                    className="w-full h-10 sm:h-12 text-sm sm:text-base"
                   >
-                    {winnerId === selectedMatch.player2?.user_id ? (
+                    {winnerId === selectedMatch.player2?.id ? (
                       <>
-                        <Trophy className="w-5 h-5 mr-2" />
+                        <Trophy className="w-4 h-4 sm:w-5 sm:h-5 mr-1 sm:mr-2" />
                         Winner
                       </>
                     ) : (
@@ -472,20 +471,285 @@ export function BracketVisualization({
                 </div>
               </div>
 
-              {/* Score Display */}
-              <div className="text-center p-6 bg-gradient-to-r from-muted/30 to-muted/50 dark:from-muted/20 dark:to-muted/40 rounded-xl border">
-                <p className="text-sm text-muted-foreground mb-2 font-medium">
-                  Current Score
-                </p>
-                <p className="text-3xl font-bold font-mono text-foreground">
-                  {player1Score} - {player2Score}
-                </p>
+              {/* Battle Details */}
+              <div className="space-y-4">
+                <h4 className="text-lg font-bold text-center">
+                  Battle Details
+                </h4>
+
+                {/* Current Battle Input */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 p-3 sm:p-4 bg-slate-50 dark:bg-slate-800 rounded-lg">
+                  <div className="space-y-2">
+                    <Label className="text-sm font-medium">Battle Winner</Label>
+                    <div className="flex flex-col sm:flex-row gap-2">
+                      <Button
+                        size="sm"
+                        variant={
+                          currentBattle.winner_id === selectedMatch.player1?.id
+                            ? "default"
+                            : "outline"
+                        }
+                        onClick={() =>
+                          setCurrentBattle({
+                            ...currentBattle,
+                            winner_id: selectedMatch.player1?.id || "",
+                          })
+                        }
+                        className="flex-1 text-xs sm:text-sm"
+                      >
+                        <span className="truncate">
+                          {selectedMatch.player1?.display_name}
+                        </span>
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant={
+                          currentBattle.winner_id === selectedMatch.player2?.id
+                            ? "default"
+                            : "outline"
+                        }
+                        onClick={() =>
+                          setCurrentBattle({
+                            ...currentBattle,
+                            winner_id: selectedMatch.player2?.id || "",
+                          })
+                        }
+                        className="flex-1 text-xs sm:text-sm"
+                      >
+                        <span className="truncate">
+                          {selectedMatch.player2?.display_name}
+                        </span>
+                      </Button>
+                    </div>
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label className="text-sm font-medium">Finish Type</Label>
+                    <div className="flex flex-col sm:flex-row gap-1">
+                      <Button
+                        size="sm"
+                        variant={
+                          currentBattle.finish_type === "burst"
+                            ? "default"
+                            : "outline"
+                        }
+                        onClick={() =>
+                          setCurrentBattle({
+                            ...currentBattle,
+                            finish_type: "burst",
+                          })
+                        }
+                        className="flex-1 text-xs sm:text-sm"
+                      >
+                        <Flame className="w-3 h-3 mr-1" />
+                        Burst
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant={
+                          currentBattle.finish_type === "ringout"
+                            ? "default"
+                            : "outline"
+                        }
+                        onClick={() =>
+                          setCurrentBattle({
+                            ...currentBattle,
+                            finish_type: "ringout",
+                          })
+                        }
+                        className="flex-1 text-xs sm:text-sm"
+                      >
+                        <Target className="w-3 h-3 mr-1" />
+                        Ring-Out
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant={
+                          currentBattle.finish_type === "spinout"
+                            ? "default"
+                            : "outline"
+                        }
+                        onClick={() =>
+                          setCurrentBattle({
+                            ...currentBattle,
+                            finish_type: "spinout",
+                          })
+                        }
+                        className="flex-1 text-xs sm:text-sm"
+                      >
+                        <RotateCcw className="w-3 h-3 mr-1" />
+                        Spin-Out
+                      </Button>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Battle Points */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <Label className="text-sm font-medium">
+                      <span className="truncate">
+                        {selectedMatch.player1?.display_name}
+                      </span>{" "}
+                      Points
+                    </Label>
+                    <div className="grid grid-cols-3 gap-1 sm:gap-2">
+                      <div>
+                        <Label className="text-xs">Bursts (3pts)</Label>
+                        <Input
+                          type="number"
+                          min="0"
+                          value={currentBattle.player1_points}
+                          onChange={(e) =>
+                            setCurrentBattle({
+                              ...currentBattle,
+                              player1_points: parseInt(e.target.value) || 0,
+                            })
+                          }
+                          className="text-center h-8 sm:h-10 text-xs sm:text-sm"
+                        />
+                      </div>
+                      <div>
+                        <Label className="text-xs">Ring-Outs (2pts)</Label>
+                        <Input
+                          type="number"
+                          min="0"
+                          value={currentBattle.player1_points}
+                          onChange={(e) =>
+                            setCurrentBattle({
+                              ...currentBattle,
+                              player1_points: parseInt(e.target.value) || 0,
+                            })
+                          }
+                          className="text-center h-8 sm:h-10 text-xs sm:text-sm"
+                        />
+                      </div>
+                      <div>
+                        <Label className="text-xs">Spin-Outs (1pt)</Label>
+                        <Input
+                          type="number"
+                          min="0"
+                          value={currentBattle.player1_points}
+                          onChange={(e) =>
+                            setCurrentBattle({
+                              ...currentBattle,
+                              player1_points: parseInt(e.target.value) || 0,
+                            })
+                          }
+                          className="text-center h-8 sm:h-10 text-xs sm:text-sm"
+                        />
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label className="text-sm font-medium">
+                      <span className="truncate">
+                        {selectedMatch.player2?.display_name}
+                      </span>{" "}
+                      Points
+                    </Label>
+                    <div className="grid grid-cols-3 gap-1 sm:gap-2">
+                      <div>
+                        <Label className="text-xs">Bursts (3pts)</Label>
+                        <Input
+                          type="number"
+                          min="0"
+                          value={currentBattle.player2_points}
+                          onChange={(e) =>
+                            setCurrentBattle({
+                              ...currentBattle,
+                              player2_points: parseInt(e.target.value) || 0,
+                            })
+                          }
+                          className="text-center h-8 sm:h-10 text-xs sm:text-sm"
+                        />
+                      </div>
+                      <div>
+                        <Label className="text-xs">Ring-Outs (2pts)</Label>
+                        <Input
+                          type="number"
+                          min="0"
+                          value={currentBattle.player2_points}
+                          onChange={(e) =>
+                            setCurrentBattle({
+                              ...currentBattle,
+                              player2_points: parseInt(e.target.value) || 0,
+                            })
+                          }
+                          className="text-center h-8 sm:h-10 text-xs sm:text-sm"
+                        />
+                      </div>
+                      <div>
+                        <Label className="text-xs">Spin-Outs (1pt)</Label>
+                        <Input
+                          type="number"
+                          min="0"
+                          value={currentBattle.player2_points}
+                          onChange={(e) =>
+                            setCurrentBattle({
+                              ...currentBattle,
+                              player2_points: parseInt(e.target.value) || 0,
+                            })
+                          }
+                          className="text-center h-8 sm:h-10 text-xs sm:text-sm"
+                        />
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                <Button
+                  onClick={addBattle}
+                  disabled={
+                    !currentBattle.winner_id || !currentBattle.finish_type
+                  }
+                  className="w-full h-10 sm:h-12 text-sm sm:text-base"
+                >
+                  Add Battle
+                </Button>
+
+                {/* Battle List */}
+                {battles.length > 0 && (
+                  <div className="space-y-2">
+                    <Label className="text-sm font-medium">Battles Added</Label>
+                    <div className="space-y-2 max-h-32 overflow-y-auto">
+                      {battles.map((battle, index) => (
+                        <div
+                          key={index}
+                          className="flex flex-col sm:flex-row items-start sm:items-center justify-between p-2 bg-slate-100 dark:bg-slate-700 rounded gap-2"
+                        >
+                          <span className="text-xs sm:text-sm flex-1">
+                            Battle {index + 1}:{" "}
+                            <span className="font-medium">
+                              {battle.winner_id === selectedMatch.player1?.id
+                                ? selectedMatch.player1?.display_name
+                                : selectedMatch.player2?.display_name}
+                            </span>{" "}
+                            wins by{" "}
+                            <span className="font-medium">
+                              {battle.finish_type}
+                            </span>
+                          </span>
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() => removeBattle(index)}
+                            className="text-xs h-8 px-2"
+                          >
+                            Remove
+                          </Button>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
               </div>
 
               {/* Instructions */}
               {!winnerId && (
                 <div className="text-center p-3 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg">
-                  <p className="text-sm text-blue-700 dark:text-blue-300 font-medium">
+                  <p className="text-xs sm:text-sm text-blue-700 dark:text-blue-300 font-medium">
                     💡 Select a winner by clicking the &quot;Select Winner&quot;
                     button above
                   </p>
@@ -493,24 +757,24 @@ export function BracketVisualization({
               )}
 
               {/* Action Buttons */}
-              <div className="flex gap-4 pt-6">
+              <div className="flex flex-col sm:flex-row gap-3 sm:gap-4 pt-4 sm:pt-6">
                 <Button
                   variant="outline"
                   onClick={() => setSelectedMatch(null)}
-                  className="flex-1 h-12 text-base font-medium"
+                  className="flex-1 h-10 sm:h-12 text-sm sm:text-base font-medium"
                 >
                   Cancel
                 </Button>
                 <Button
                   onClick={handleScoreUpdate}
                   disabled={isUpdating || !winnerId}
-                  className={`flex-1 h-12 text-base font-medium ${
+                  className={`flex-1 h-10 sm:h-12 text-sm sm:text-base font-medium ${
                     !winnerId ? "opacity-50 cursor-not-allowed" : ""
                   }`}
                 >
                   {isUpdating ? (
                     <>
-                      <div className="w-5 h-5 mr-2 animate-spin rounded-full border-2 border-current border-t-transparent" />
+                      <div className="w-4 h-4 sm:w-5 sm:h-5 mr-1 sm:mr-2 animate-spin rounded-full border-2 border-current border-t-transparent" />
                       Updating...
                     </>
                   ) : !winnerId ? (
@@ -534,7 +798,7 @@ function PlayerSlot({
   isWinner,
   isCompleted,
 }: {
-  player?: BracketParticipant;
+  player?: { id: string; display_name: string };
   score: number;
   isWinner: boolean;
   isCompleted: boolean;
@@ -594,28 +858,18 @@ function PlayerSlot({
               : "text-slate-700 dark:text-slate-300"
           }`}
         >
-          {player.user?.display_name || "Unknown"}
+          {player.display_name}
         </span>
-        {isWinner && isCompleted && (
-          <div className="w-5 h-5 rounded-full bg-gradient-to-br from-amber-200 to-yellow-200 dark:from-amber-800/50 dark:to-yellow-800/50 flex items-center justify-center flex-shrink-0">
-            <Trophy className="h-3 w-3 text-amber-700 dark:text-amber-300" />
-          </div>
-        )}
       </div>
-      <div
-        className={`
-        text-base font-mono font-bold transition-all duration-200 flex-shrink-0 ml-2
-        ${
-          isCompleted
-            ? isWinner
-              ? "text-amber-700 dark:text-amber-300"
-              : "text-slate-700 dark:text-slate-300"
-            : "text-slate-400 dark:text-slate-500"
-        }
-      `}
+      <span
+        className={`text-sm font-mono font-bold transition-colors duration-200 flex-shrink-0 ${
+          isWinner && isCompleted
+            ? "text-amber-800 dark:text-amber-200"
+            : "text-slate-600 dark:text-slate-400"
+        }`}
       >
-        {isCompleted ? score : "-"}
-      </div>
+        {score}
+      </span>
     </div>
   );
 }
