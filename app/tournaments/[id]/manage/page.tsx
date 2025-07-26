@@ -12,6 +12,8 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { TournamentChat } from "@/components/tournament-chat";
+import { AdminBettingControls } from "@/components/admin-betting-controls";
+import { OBSStreamPlayer } from "@/components/obs-stream-player";
 import {
   Dialog,
   DialogContent,
@@ -31,6 +33,8 @@ import {
   Trophy,
   Calendar,
   Clock,
+  Target,
+  Video,
 } from "lucide-react";
 import { ThemeToggle } from "@/components/theme-toggle";
 
@@ -38,6 +42,7 @@ export default function TournamentManagePage() {
   const params = useParams();
   const router = useRouter();
   const { user, isAdmin } = useAuth();
+  const tournamentId = params.id as string;
   const [tournament, setTournament] = useState<TournamentWithDetails | null>(
     null
   );
@@ -46,12 +51,13 @@ export default function TournamentManagePage() {
   const [actionLoading, setActionLoading] = useState(false);
   const [showStartDialog, setShowStartDialog] = useState(false);
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
+  const [activeTab, setActiveTab] = useState("management");
 
   useEffect(() => {
-    if (params.id) {
+    if (tournamentId) {
       fetchTournament();
     }
-  }, [params.id]);
+  }, [tournamentId]);
 
   const fetchTournament = async () => {
     try {
@@ -71,7 +77,7 @@ export default function TournamentManagePage() {
           )
         `
         )
-        .eq("id", params.id)
+        .eq("id", tournamentId)
         .single();
 
       if (error) {
@@ -396,184 +402,271 @@ export default function TournamentManagePage() {
           <ThemeToggle />
         </div>
 
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-          {/* Tournament Actions */}
-          <Card>
-            <CardHeader>
-              <CardTitle>Tournament Actions</CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              {tournament.status === "open" && (
+        {/* Tab Navigation */}
+        <div className="flex space-x-4 mb-8 border-b">
+          <button
+            onClick={() => setActiveTab("management")}
+            className={`pb-2 px-1 border-b-2 font-medium text-sm ${
+              activeTab === "management"
+                ? "border-primary text-primary"
+                : "border-transparent text-muted-foreground hover:text-foreground"
+            }`}
+          >
+            <Settings className="h-4 w-4 inline mr-2" />
+            Tournament Management
+          </button>
+          <button
+            onClick={() => setActiveTab("betting")}
+            className={`pb-2 px-1 border-b-2 font-medium text-sm ${
+              activeTab === "betting"
+                ? "border-primary text-primary"
+                : "border-transparent text-muted-foreground hover:text-foreground"
+            }`}
+          >
+            <Target className="h-4 w-4 inline mr-2" />
+            Live Betting (V2.5)
+          </button>
+          <button
+            onClick={() => setActiveTab("streaming")}
+            className={`pb-2 px-1 border-b-2 font-medium text-sm ${
+              activeTab === "streaming"
+                ? "border-primary text-primary"
+                : "border-transparent text-muted-foreground hover:text-foreground"
+            }`}
+          >
+            <Video className="h-4 w-4 inline mr-2" />
+            Live Streaming
+          </button>
+          <button
+            onClick={() => setActiveTab("chat")}
+            className={`pb-2 px-1 border-b-2 font-medium text-sm ${
+              activeTab === "chat"
+                ? "border-primary text-primary"
+                : "border-transparent text-muted-foreground hover:text-foreground"
+            }`}
+          >
+            <Users className="h-4 w-4 inline mr-2" />
+            Tournament Chat
+          </button>
+        </div>
+
+        {/* Management Tab */}
+        {activeTab === "management" && (
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+            {/* Tournament Actions */}
+            <Card>
+              <CardHeader>
+                <CardTitle>Tournament Actions</CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                {tournament.status === "open" && (
+                  <div className="space-y-3">
+                    <div className="flex items-center gap-3 p-4 bg-blue-50 dark:bg-blue-900/20 rounded-lg">
+                      <Play className="h-5 w-5 text-blue-600 dark:text-blue-400" />
+                      <div className="flex-1">
+                        <h4 className="font-medium">Start Tournament</h4>
+                        <p className="text-sm text-muted-foreground">
+                          Begin the tournament and generate brackets
+                        </p>
+                      </div>
+                      <Dialog
+                        open={showStartDialog}
+                        onOpenChange={setShowStartDialog}
+                      >
+                        <DialogTrigger asChild>
+                          <Button disabled={actionLoading}>
+                            <Play className="mr-2 h-4 w-4" />
+                            Start Tournament
+                          </Button>
+                        </DialogTrigger>
+                        <DialogContent>
+                          <DialogHeader>
+                            <DialogTitle>Start Tournament</DialogTitle>
+                            <DialogDescription>
+                              Are you sure you want to start this tournament?
+                              This action cannot be undone and will generate the
+                              tournament brackets.
+                            </DialogDescription>
+                          </DialogHeader>
+                          <DialogFooter>
+                            <Button
+                              variant="outline"
+                              onClick={() => setShowStartDialog(false)}
+                            >
+                              Cancel
+                            </Button>
+                            <Button
+                              onClick={handleStartTournament}
+                              disabled={actionLoading}
+                            >
+                              {actionLoading
+                                ? "Starting..."
+                                : "Start Tournament"}
+                            </Button>
+                          </DialogFooter>
+                        </DialogContent>
+                      </Dialog>
+                    </div>
+                  </div>
+                )}
+
+                {tournament.status === "in_progress" && (
+                  <div className="space-y-3">
+                    <div className="flex items-center gap-3 p-4 bg-yellow-50 dark:bg-yellow-900/20 rounded-lg">
+                      <Trophy className="h-5 w-5 text-yellow-600 dark:text-yellow-400" />
+                      <div className="flex-1">
+                        <h4 className="font-medium">Tournament in Progress</h4>
+                        <p className="text-sm text-muted-foreground">
+                          Manage ongoing matches and brackets
+                        </p>
+                      </div>
+                      <Button asChild>
+                        <Link href={`/tournaments/${tournament.id}/bracket`}>
+                          <Play className="mr-2 h-4 w-4" />
+                          View Bracket
+                        </Link>
+                      </Button>
+                    </div>
+                  </div>
+                )}
+
+                <Separator />
+
                 <div className="space-y-3">
-                  <div className="flex items-center gap-3 p-4 bg-blue-50 dark:bg-blue-900/20 rounded-lg">
-                    <Play className="h-5 w-5 text-blue-600 dark:text-blue-400" />
+                  <div className="flex items-center gap-3 p-4 bg-destructive/10 dark:bg-destructive/20 rounded-lg">
+                    <Trash2 className="h-5 w-5 text-destructive" />
                     <div className="flex-1">
-                      <h4 className="font-medium">Start Tournament</h4>
-                      <p className="text-sm text-muted-foreground">
-                        Begin the tournament and generate brackets
+                      <h4 className="font-medium text-destructive">
+                        Delete Tournament
+                      </h4>
+                      <p className="text-sm text-destructive-foreground">
+                        Permanently delete this tournament
                       </p>
                     </div>
                     <Dialog
-                      open={showStartDialog}
-                      onOpenChange={setShowStartDialog}
+                      open={showDeleteDialog}
+                      onOpenChange={setShowDeleteDialog}
                     >
                       <DialogTrigger asChild>
-                        <Button disabled={actionLoading}>
-                          <Play className="mr-2 h-4 w-4" />
-                          Start Tournament
+                        <Button
+                          variant="destructive"
+                          className="text-white"
+                          disabled={actionLoading}
+                        >
+                          <Trash2 className="mr-2 h-4 w-4" />
+                          Delete
                         </Button>
                       </DialogTrigger>
-                      <DialogContent>
+                      <DialogContent className="bg-card text-card-foreground border-destructive">
                         <DialogHeader>
-                          <DialogTitle>Start Tournament</DialogTitle>
-                          <DialogDescription>
-                            Are you sure you want to start this tournament? This
-                            action cannot be undone and will generate the
-                            tournament brackets.
+                          <DialogTitle className="text-destructive">
+                            Delete Tournament
+                          </DialogTitle>
+                          <DialogDescription className="text-destructive-foreground">
+                            Are you sure you want to delete this tournament?
+                            This action cannot be undone and will remove all
+                            tournament data.
                           </DialogDescription>
                         </DialogHeader>
                         <DialogFooter>
                           <Button
                             variant="outline"
-                            onClick={() => setShowStartDialog(false)}
+                            onClick={() => setShowDeleteDialog(false)}
                           >
                             Cancel
                           </Button>
                           <Button
-                            onClick={handleStartTournament}
+                            variant="destructive"
+                            className="text-white"
+                            onClick={handleDeleteTournament}
                             disabled={actionLoading}
                           >
-                            {actionLoading ? "Starting..." : "Start Tournament"}
+                            {actionLoading
+                              ? "Deleting..."
+                              : "Delete Tournament"}
                           </Button>
                         </DialogFooter>
                       </DialogContent>
                     </Dialog>
                   </div>
                 </div>
-              )}
+              </CardContent>
+            </Card>
 
-              {tournament.status === "in_progress" && (
-                <div className="space-y-3">
-                  <div className="flex items-center gap-3 p-4 bg-yellow-50 dark:bg-yellow-900/20 rounded-lg">
-                    <Trophy className="h-5 w-5 text-yellow-600 dark:text-yellow-400" />
-                    <div className="flex-1">
-                      <h4 className="font-medium">Tournament in Progress</h4>
+            {/* Tournament Info */}
+            <Card>
+              <CardHeader>
+                <CardTitle>Tournament Information</CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div className="grid grid-cols-1 gap-4">
+                  <div className="flex items-center gap-3">
+                    <Calendar className="h-5 w-5 text-muted-foreground" />
+                    <div>
+                      <p className="font-medium">Tournament Start</p>
                       <p className="text-sm text-muted-foreground">
-                        Manage ongoing matches and brackets
+                        {formatDate(tournament.start_date)}
                       </p>
                     </div>
-                    <Button asChild>
-                      <Link href={`/tournaments/${tournament.id}/bracket`}>
-                        <Play className="mr-2 h-4 w-4" />
-                        View Bracket
-                      </Link>
-                    </Button>
+                  </div>
+
+                  <div className="flex items-center gap-3">
+                    <Clock className="h-5 w-5 text-muted-foreground" />
+                    <div>
+                      <p className="font-medium">Registration Deadline</p>
+                      <p className="text-sm text-muted-foreground">
+                        {formatDate(tournament.registration_deadline)}
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center gap-3">
+                    <Users className="h-5 w-5 text-muted-foreground" />
+                    <div>
+                      <p className="font-medium">Participants</p>
+                      <p className="text-sm text-muted-foreground">
+                        {tournament.participant_count}/
+                        {tournament.max_participants} players
+                      </p>
+                    </div>
                   </div>
                 </div>
-              )}
+              </CardContent>
+            </Card>
+          </div>
+        )}
 
-              <Separator />
+        {/* Betting Tab */}
+        {activeTab === "betting" && (
+          <div className="space-y-6">
+            <AdminBettingControls tournamentId={tournament.id} />
+          </div>
+        )}
 
-              <div className="space-y-3">
-                <div className="flex items-center gap-3 p-4 bg-destructive/10 dark:bg-destructive/20 rounded-lg">
-                  <Trash2 className="h-5 w-5 text-destructive" />
-                  <div className="flex-1">
-                    <h4 className="font-medium text-destructive">
-                      Delete Tournament
-                    </h4>
-                    <p className="text-sm text-destructive-foreground">
-                      Permanently delete this tournament
-                    </p>
-                  </div>
-                  <Dialog
-                    open={showDeleteDialog}
-                    onOpenChange={setShowDeleteDialog}
-                  >
-                    <DialogTrigger asChild>
-                      <Button
-                        variant="destructive"
-                        className="text-white"
-                        disabled={actionLoading}
-                      >
-                        <Trash2 className="mr-2 h-4 w-4" />
-                        Delete
-                      </Button>
-                    </DialogTrigger>
-                    <DialogContent className="bg-card text-card-foreground border-destructive">
-                      <DialogHeader>
-                        <DialogTitle className="text-destructive">
-                          Delete Tournament
-                        </DialogTitle>
-                        <DialogDescription className="text-destructive-foreground">
-                          Are you sure you want to delete this tournament? This
-                          action cannot be undone and will remove all tournament
-                          data.
-                        </DialogDescription>
-                      </DialogHeader>
-                      <DialogFooter>
-                        <Button
-                          variant="outline"
-                          onClick={() => setShowDeleteDialog(false)}
-                        >
-                          Cancel
-                        </Button>
-                        <Button
-                          variant="destructive"
-                          className="text-white"
-                          onClick={handleDeleteTournament}
-                          disabled={actionLoading}
-                        >
-                          {actionLoading ? "Deleting..." : "Delete Tournament"}
-                        </Button>
-                      </DialogFooter>
-                    </DialogContent>
-                  </Dialog>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
+        {/* Streaming Tab */}
+        {activeTab === "streaming" && (
+          <div className="space-y-6">
+            <OBSStreamPlayer
+              streamUrl={(tournament as any).stream_url}
+              streamKey={(tournament as any).stream_key}
+              tournamentId={tournamentId}
+              isLive={tournament.status === "in_progress"}
+              title={`${tournament.name} - Live Stream`}
+            />
+          </div>
+        )}
 
-          {/* Tournament Info */}
-          <Card>
-            <CardHeader>
-              <CardTitle>Tournament Information</CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <div className="grid grid-cols-1 gap-4">
-                <div className="flex items-center gap-3">
-                  <Calendar className="h-5 w-5 text-muted-foreground" />
-                  <div>
-                    <p className="font-medium">Tournament Start</p>
-                    <p className="text-sm text-muted-foreground">
-                      {formatDate(tournament.start_date)}
-                    </p>
-                  </div>
-                </div>
-
-                <div className="flex items-center gap-3">
-                  <Clock className="h-5 w-5 text-muted-foreground" />
-                  <div>
-                    <p className="font-medium">Registration Deadline</p>
-                    <p className="text-sm text-muted-foreground">
-                      {formatDate(tournament.registration_deadline)}
-                    </p>
-                  </div>
-                </div>
-
-                <div className="flex items-center gap-3">
-                  <Users className="h-5 w-5 text-muted-foreground" />
-                  <div>
-                    <p className="font-medium">Participants</p>
-                    <p className="text-sm text-muted-foreground">
-                      {tournament.participant_count}/
-                      {tournament.max_participants} players
-                    </p>
-                  </div>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-        </div>
+        {/* Chat Tab */}
+        {activeTab === "chat" && (
+          <div className="space-y-6">
+            <TournamentChat
+              tournamentId={tournament.id}
+              currentUserId={user?.id || ""}
+              currentUsername={user?.display_name || "Anonymous"}
+              currentUserAvatar={user?.avatar_url || undefined}
+            />
+          </div>
+        )}
 
         {/* Participants Management */}
         {tournament.tournament_participants &&
@@ -627,18 +720,6 @@ export default function TournamentManagePage() {
               </CardContent>
             </Card>
           )}
-
-        {/* Tournament Chat */}
-        {user && (
-          <div className="mt-6">
-            <TournamentChat
-              tournamentId={params.id as string}
-              currentUserId={user.id}
-              currentUsername={user.display_name || "Anonymous"}
-              currentUserAvatar={user.avatar_url || undefined}
-            />
-          </div>
-        )}
 
         {/* Error Alert */}
         {error && (

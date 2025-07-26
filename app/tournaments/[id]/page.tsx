@@ -586,9 +586,26 @@ export default function TournamentPage() {
 
             <LiveTournamentDashboard
               tournamentId={tournamentId}
-              tournamentName={tournament.name}
               matches={formattedMatches}
-              onMatchClick={handleMatchClick}
+              stats={{
+                totalParticipants: participants.length,
+                completedMatches: matches.filter(
+                  (m) => m.status === "completed"
+                ).length,
+                totalMatches: matches.length,
+                currentRound: Math.max(...matches.map((m) => m.round), 1),
+                totalRounds: Math.max(...matches.map((m) => m.round), 1),
+                spectators: Math.floor(Math.random() * 50) + 10, // Mock spectator count
+              }}
+              streamUrl={(tournament as any).stream_url}
+              streamKey={(tournament as any).stream_key}
+              onMatchClick={(matchId) => {
+                const match = formattedMatches.find((m) => m.id === matchId);
+                if (match) {
+                  setSelectedMatch(match);
+                  setActiveTab("scoring");
+                }
+              }}
             />
           </TabsContent>
 

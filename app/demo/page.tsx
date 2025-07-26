@@ -252,9 +252,21 @@ export default function DemoPage() {
             <div className="w-full">
               <LiveTournamentDashboard
                 tournamentId="demo-tournament"
-                tournamentName="Demo Tournament"
                 matches={demoMatches}
-                onMatchClick={handleMatchClick}
+                stats={{
+                  totalParticipants: 8,
+                  completedMatches: 2,
+                  totalMatches: 7,
+                  currentRound: 2,
+                  totalRounds: 3,
+                  spectators: 25,
+                }}
+                onMatchClick={(matchId) => {
+                  const match = demoMatches.find((m) => m.id === matchId);
+                  if (match) {
+                    setActiveTab("scoring");
+                  }
+                }}
               />
             </div>
           </TabsContent>

@@ -233,9 +233,24 @@ export default function DemoTournamentPage() {
 
             <LiveTournamentDashboard
               tournamentId={mockTournament.id}
-              tournamentName={mockTournament.name}
               matches={mockMatches}
-              onMatchClick={handleMatchClick}
+              stats={{
+                totalParticipants: mockParticipants.length,
+                completedMatches: mockMatches.filter(
+                  (m) => m.status === "completed"
+                ).length,
+                totalMatches: mockMatches.length,
+                currentRound: 2,
+                totalRounds: 3,
+                spectators: 42,
+              }}
+              onMatchClick={(matchId) => {
+                const match = mockMatches.find((m) => m.id === matchId);
+                if (match) {
+                  setSelectedMatch(match);
+                  setActiveTab("scoring");
+                }
+              }}
             />
           </TabsContent>
 

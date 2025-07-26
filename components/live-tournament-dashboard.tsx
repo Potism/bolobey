@@ -1,233 +1,184 @@
 "use client";
 
-import { useState, useEffect } from "react";
-import { motion, AnimatePresence } from "framer-motion";
+import { useState, useEffect, useCallback } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Progress } from "@/components/ui/progress";
+import { LiveBettingInterface } from "@/components/live-betting-interface";
+// import { OBSStreamPlayer } from "@/components/obs-stream-player";
+import { useAuth } from "@/lib/hooks/useAuth";
+import { supabase } from "@/lib/supabase";
 import {
   Trophy,
   Users,
-  Zap,
-  Eye,
   Play,
-  CheckCircle,
+  Clock,
   TrendingUp,
-  Target,
+  Award,
+  Activity,
+  Coins,
 } from "lucide-react";
-// Removed realtime service dependency - using local state instead
 
-interface TournamentStats {
-  totalMatches: number;
-  completedMatches: number;
-  activeMatches: number;
-  totalParticipants: number;
-  averageMatchDuration: number;
-  tournamentProgress: number;
-}
-
-interface LiveMatch {
+interface Match {
   id: string;
-  player1: {
-    id: string;
-    name: string;
-    score: number;
-    avatar?: string;
-  };
-  player2: {
-    id: string;
-    name: string;
-    score: number;
-    avatar?: string;
-  };
-  status: "pending" | "in_progress" | "completed";
-  startTime?: Date;
-  endTime?: Date;
+  player1: { id: string; name: string; score: number; avatar?: string };
+  player2: { id: string; name: string; score: number; avatar?: string };
+  status: string;
   round: number;
   matchNumber: number;
-  winner?: {
-    id: string;
-    name: string;
-  };
+}
+
+interface TournamentStats {
+  totalParticipants: number;
+  completedMatches: number;
+  totalMatches: number;
+  currentRound: number;
+  totalRounds: number;
+  spectators: number;
 }
 
 interface LiveTournamentDashboardProps {
   tournamentId: string;
-  tournamentName: string;
-  matches: LiveMatch[];
-  onMatchClick?: (match: LiveMatch) => void;
+  matches: Match[];
+  stats: TournamentStats;
+  streamUrl?: string;
+  streamKey?: string;
+  onMatchClick?: (matchId: string) => void;
 }
 
 export function LiveTournamentDashboard({
   tournamentId,
-  tournamentName,
   matches,
+  stats,
+  streamUrl,
+  streamKey,
   onMatchClick,
 }: LiveTournamentDashboardProps) {
-  const [stats, setStats] = useState<TournamentStats>({
-    totalMatches: 0,
-    completedMatches: 0,
-    activeMatches: 0,
-    totalParticipants: 0,
-    averageMatchDuration: 0,
-    tournamentProgress: 0,
-  });
-  const [liveMatches, setLiveMatches] = useState<LiveMatch[]>([]);
-  const [recentResults, setRecentResults] = useState<LiveMatch[]>([]);
-  const [isConnected, setIsConnected] = useState(false);
-  const [spectators, setSpectators] = useState(0);
+  const [isConnected] = useState(true);
+  const { user } = useAuth();
+  const [userPoints, setUserPoints] = useState(0);
+
+  // Fetch user's points balance
+  const fetchUserPoints = useCallback(async () => {
+    if (!user) return;
+
+    try {
+      const { data, error } = await supabase.rpc("get_user_points_balance", {
+        user_uuid: user.id,
+      });
+
+      if (error) {
+        console.error("Error fetching user points:", error);
+        return;
+      }
+
+      setUserPoints(data || 0);
+    } catch (error) {
+      console.error("Error fetching user points:", error);
+    }
+  }, [user]);
 
   useEffect(() => {
-    // Initialize stats
-    const totalMatches = matches.length;
-    const completedMatches = matches.filter(
-      (m) => m.status === "completed"
-    ).length;
-    const activeMatches = matches.filter(
-      (m) => m.status === "in_progress"
-    ).length;
-    const totalParticipants = new Set([
-      ...matches.flatMap((m) => [m.player1?.id, m.player2?.id].filter(Boolean)),
-    ]).size;
+    fetchUserPoints();
+  }, [user?.id]); // Only depend on user ID
 
-    const tournamentProgress =
-      totalMatches > 0 ? (completedMatches / totalMatches) * 100 : 0;
+  const getStatusColor = (status: string) => {
+    switch (status) {
+      case "completed":
+        return "bg-green-500";
+      case "in_progress":
+        return "bg-yellow-500";
+      case "pending":
+        return "bg-gray-500";
+      default:
+        return "bg-gray-500";
+    }
+  };
 
-    setStats({
-      totalMatches,
-      completedMatches,
-      activeMatches,
-      totalParticipants,
-      averageMatchDuration: 15, // Mock data
-      tournamentProgress,
-    });
-
-    setLiveMatches(matches.filter((m) => m.status === "in_progress"));
-    setRecentResults(matches.filter((m) => m.status === "completed").slice(-5));
-  }, [matches]);
-
-  useEffect(() => {
-    // Simulate real-time updates with local state
-    setIsConnected(true);
-
-    // Simulate spectator count updates
-    const spectatorInterval = setInterval(() => {
-      setSpectators((prev) =>
-        Math.max(0, prev + Math.floor(Math.random() * 3) - 1)
-      );
-    }, 5000);
-
-    return () => {
-      clearInterval(spectatorInterval);
-    };
-  }, [tournamentId]);
+  const getInitials = (name: string) => {
+    return name
+      .split(" ")
+      .map((n) => n[0])
+      .join("")
+      .toUpperCase()
+      .slice(0, 2);
+  };
 
   return (
-    <div className="space-y-6">
-      {/* Header */}
-      <motion.div
-        initial={{ opacity: 0, y: -20 }}
-        animate={{ opacity: 1, y: 0 }}
-        className="flex items-center justify-between"
-      >
-        <div>
-          <h1 className="text-3xl font-bold">{tournamentName}</h1>
-          <p className="text-muted-foreground">Live Tournament Dashboard</p>
+    <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+      {/* Main Tournament Stats */}
+      <div className="lg:col-span-2 space-y-6">
+        {/* Header Stats */}
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+          <Card>
+            <CardContent className="p-4">
+              <div className="flex items-center gap-2">
+                <Users className="h-4 w-4 text-muted-foreground" />
+                <div>
+                  <p className="text-sm text-muted-foreground">Participants</p>
+                  <p className="text-2xl font-bold">
+                    {stats.totalParticipants}
+                  </p>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardContent className="p-4">
+              <div className="flex items-center gap-2">
+                <Coins className="h-4 w-4 text-muted-foreground" />
+                <div>
+                  <p className="text-sm text-muted-foreground">Your Points</p>
+                  <p className="text-2xl font-bold">{userPoints}</p>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardContent className="p-4">
+              <div className="flex items-center gap-2">
+                <Play className="h-4 w-4 text-muted-foreground" />
+                <div>
+                  <p className="text-sm text-muted-foreground">Matches</p>
+                  <p className="text-2xl font-bold">
+                    {stats.completedMatches}/{stats.totalMatches}
+                  </p>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardContent className="p-4">
+              <div className="flex items-center gap-2">
+                <Trophy className="h-4 w-4 text-muted-foreground" />
+                <div>
+                  <p className="text-sm text-muted-foreground">Round</p>
+                  <p className="text-2xl font-bold">
+                    {stats.currentRound}/{stats.totalRounds}
+                  </p>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardContent className="p-4">
+              <div className="flex items-center gap-2">
+                <Activity className="h-4 w-4 text-muted-foreground" />
+                <div>
+                  <p className="text-sm text-muted-foreground">Spectators</p>
+                  <p className="text-2xl font-bold">{stats.spectators}</p>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
         </div>
-        <div className="flex items-center gap-4">
-          <Badge
-            variant={isConnected ? "default" : "secondary"}
-            className="flex items-center gap-2"
-          >
-            <div
-              className={`w-2 h-2 rounded-full ${
-                isConnected ? "bg-green-500" : "bg-red-500"
-              }`}
-            />
-            {isConnected ? "Live" : "Offline"}
-          </Badge>
-          <Badge variant="outline" className="flex items-center gap-2">
-            <Eye className="h-4 w-4" />
-            {Math.max(spectators, 0)} watching
-          </Badge>
-        </div>
-      </motion.div>
 
-      {/* Stats Grid */}
-      <motion.div
-        initial={{ opacity: 0, y: 20 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ delay: 0.1 }}
-        className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4"
-      >
-        <Card>
-          <CardContent className="p-4">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm font-medium text-muted-foreground">
-                  Total Matches
-                </p>
-                <p className="text-2xl font-bold">{stats.totalMatches}</p>
-              </div>
-              <Target className="h-8 w-8 text-primary" />
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardContent className="p-4">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm font-medium text-muted-foreground">
-                  Completed
-                </p>
-                <p className="text-2xl font-bold text-green-600">
-                  {stats.completedMatches}
-                </p>
-              </div>
-              <CheckCircle className="h-8 w-8 text-green-600" />
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardContent className="p-4">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm font-medium text-muted-foreground">
-                  Live Matches
-                </p>
-                <p className="text-2xl font-bold text-blue-600">
-                  {stats.activeMatches}
-                </p>
-              </div>
-              <Play className="h-8 w-8 text-blue-600" />
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardContent className="p-4">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm font-medium text-muted-foreground">
-                  Participants
-                </p>
-                <p className="text-2xl font-bold">{stats.totalParticipants}</p>
-              </div>
-              <Users className="h-8 w-8 text-primary" />
-            </div>
-          </CardContent>
-        </Card>
-      </motion.div>
-
-      {/* Tournament Progress */}
-      <motion.div
-        initial={{ opacity: 0, y: 20 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ delay: 0.2 }}
-      >
+        {/* Progress Bar */}
         <Card>
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
@@ -236,157 +187,204 @@ export function LiveTournamentDashboard({
             </CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="space-y-4">
-              <div className="flex items-center justify-between">
-                <span className="text-sm font-medium">Overall Progress</span>
-                <span className="text-sm text-muted-foreground">
-                  {stats.completedMatches} / {stats.totalMatches} matches
+            <div className="space-y-2">
+              <div className="flex justify-between text-sm">
+                <span>Progress</span>
+                <span>
+                  {Math.round(
+                    (stats.completedMatches / stats.totalMatches) * 100
+                  )}
+                  %
                 </span>
               </div>
-              <Progress value={stats.tournamentProgress} className="h-3" />
-              <div className="flex items-center justify-between text-sm text-muted-foreground">
-                <span>Started</span>
-                <span>{Math.round(stats.tournamentProgress)}% Complete</span>
-              </div>
+              <Progress
+                value={(stats.completedMatches / stats.totalMatches) * 100}
+                className="h-2"
+              />
             </div>
           </CardContent>
         </Card>
-      </motion.div>
 
-      {/* Live Matches */}
-      <motion.div
-        initial={{ opacity: 0, y: 20 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ delay: 0.3 }}
-      >
+        {/* Live Matches */}
         <Card>
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
-              <Zap className="h-5 w-5 text-blue-600" />
+              <Play className="h-5 w-5" />
               Live Matches
             </CardTitle>
           </CardHeader>
           <CardContent>
-            <AnimatePresence>
-              {liveMatches.length > 0 ? (
-                <div className="space-y-4">
-                  {liveMatches.map((match) => (
-                    <motion.div
-                      key={match.id}
-                      initial={{ opacity: 0, x: -20 }}
-                      animate={{ opacity: 1, x: 0 }}
-                      exit={{ opacity: 0, x: 20 }}
-                      className="flex items-center justify-between p-4 border rounded-lg bg-gradient-to-r from-blue-50 to-purple-50 dark:from-blue-950/20 dark:to-purple-950/20"
-                    >
-                      <div className="flex items-center gap-4 flex-1">
-                        <div className="flex items-center gap-2">
-                          <div className="w-3 h-3 bg-blue-500 rounded-full animate-pulse" />
-                          <span className="text-sm font-medium">
-                            Round {match.round}
-                          </span>
-                        </div>
-                        <div className="flex items-center gap-4">
-                          <div className="text-center">
-                            <p className="font-semibold">
-                              {match.player1.name}
-                            </p>
-                            <p className="text-2xl font-bold text-blue-600">
-                              {match.player1.score}
-                            </p>
-                          </div>
-                          <div className="text-center text-muted-foreground">
-                            <p className="text-sm">vs</p>
-                          </div>
-                          <div className="text-center">
-                            <p className="font-semibold">
-                              {match.player2.name}
-                            </p>
-                            <p className="text-2xl font-bold text-purple-600">
-                              {match.player2.score}
-                            </p>
-                          </div>
-                        </div>
+            <div className="space-y-4">
+              {matches
+                .filter((match) => match.status === "in_progress")
+                .map((match) => (
+                  <div
+                    key={match.id}
+                    className="flex items-center justify-between p-4 bg-muted rounded-lg cursor-pointer hover:bg-muted/80 transition-colors"
+                    onClick={() => onMatchClick?.(match.id)}
+                  >
+                    <div className="flex items-center gap-4">
+                      <div className="flex items-center gap-2">
+                        <Avatar className="h-8 w-8">
+                          <AvatarImage src={match.player1.avatar} />
+                          <AvatarFallback>
+                            {getInitials(match.player1.name)}
+                          </AvatarFallback>
+                        </Avatar>
+                        <span className="font-medium">
+                          {match.player1.name}
+                        </span>
+                        <span className="text-lg font-bold">
+                          {match.player1.score}
+                        </span>
                       </div>
-                      <Button
-                        size="sm"
-                        onClick={() => onMatchClick?.(match)}
-                        className="flex items-center gap-2"
-                      >
-                        <Eye className="h-4 w-4" />
-                        Watch
-                      </Button>
-                    </motion.div>
-                  ))}
-                </div>
-              ) : (
-                <div className="text-center py-8 text-muted-foreground">
-                  <Play className="h-12 w-12 mx-auto mb-4 opacity-50" />
-                  <p>No live matches at the moment</p>
-                  <p className="text-sm">
-                    Matches will appear here when they start
-                  </p>
-                </div>
-              )}
-            </AnimatePresence>
-          </CardContent>
-        </Card>
-      </motion.div>
 
-      {/* Recent Results */}
-      <motion.div
-        initial={{ opacity: 0, y: 20 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ delay: 0.4 }}
-      >
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <Trophy className="h-5 w-5 text-yellow-600" />
-              Recent Results
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="space-y-3">
-              {recentResults.map((match) => (
-                <motion.div
-                  key={match.id}
-                  initial={{ opacity: 0, y: 10 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  className="flex items-center justify-between p-3 border rounded-lg"
-                >
-                  <div className="flex items-center gap-3">
-                    <Badge variant="outline" className="text-xs">
-                      Round {match.round}
-                    </Badge>
+                      <div className="text-muted-foreground">vs</div>
+
+                      <div className="flex items-center gap-2">
+                        <span className="text-lg font-bold">
+                          {match.player2.score}
+                        </span>
+                        <span className="font-medium">
+                          {match.player2.name}
+                        </span>
+                        <Avatar className="h-8 w-8">
+                          <AvatarImage src={match.player2.avatar} />
+                          <AvatarFallback>
+                            {getInitials(match.player2.name)}
+                          </AvatarFallback>
+                        </Avatar>
+                      </div>
+                    </div>
+
                     <div className="flex items-center gap-2">
-                      <span className="font-medium">{match.player1.name}</span>
-                      <span className="text-muted-foreground">
-                        {match.player1.score}
-                      </span>
-                      <span className="text-muted-foreground">-</span>
-                      <span className="text-muted-foreground">
-                        {match.player2.score}
-                      </span>
-                      <span className="font-medium">{match.player2.name}</span>
+                      <div
+                        className={`w-2 h-2 rounded-full ${getStatusColor(
+                          match.status
+                        )}`}
+                      />
+                      <Badge variant="destructive">
+                        <Play className="h-3 w-3 mr-1" />
+                        LIVE
+                      </Badge>
                     </div>
                   </div>
-                  <div className="flex items-center gap-2">
-                    <CheckCircle className="h-4 w-4 text-green-600" />
-                    <span className="text-sm font-medium text-green-600">
-                      {match.winner?.name} won
-                    </span>
-                  </div>
-                </motion.div>
-              ))}
-              {recentResults.length === 0 && (
-                <div className="text-center py-4 text-muted-foreground">
-                  <p>No completed matches yet</p>
+                ))}
+
+              {matches.filter((match) => match.status === "in_progress")
+                .length === 0 && (
+                <div className="text-center py-8">
+                  <Clock className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
+                  <p className="text-muted-foreground">
+                    No live matches at the moment
+                  </p>
                 </div>
               )}
             </div>
           </CardContent>
         </Card>
-      </motion.div>
+
+        {/* Upcoming Matches */}
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <Clock className="h-5 w-5" />
+              Upcoming Matches
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="space-y-4">
+              {matches
+                .filter((match) => match.status === "pending")
+                .slice(0, 3)
+                .map((match) => (
+                  <div
+                    key={match.id}
+                    className="flex items-center justify-between p-4 bg-muted rounded-lg cursor-pointer hover:bg-muted/80 transition-colors"
+                    onClick={() => onMatchClick?.(match.id)}
+                  >
+                    <div className="flex items-center gap-4">
+                      <div className="flex items-center gap-2">
+                        <Avatar className="h-8 w-8">
+                          <AvatarImage src={match.player1.avatar} />
+                          <AvatarFallback>
+                            {getInitials(match.player1.name)}
+                          </AvatarFallback>
+                        </Avatar>
+                        <span className="font-medium">
+                          {match.player1.name}
+                        </span>
+                      </div>
+
+                      <div className="text-muted-foreground">vs</div>
+
+                      <div className="flex items-center gap-2">
+                        <span className="font-medium">
+                          {match.player2.name}
+                        </span>
+                        <Avatar className="h-8 w-8">
+                          <AvatarImage src={match.player2.avatar} />
+                          <AvatarFallback>
+                            {getInitials(match.player2.name)}
+                          </AvatarFallback>
+                        </Avatar>
+                      </div>
+                    </div>
+
+                    <div className="flex items-center gap-2">
+                      <Badge variant="secondary">
+                        Round {match.round} - Match {match.matchNumber}
+                      </Badge>
+                    </div>
+                  </div>
+                ))}
+
+              {matches.filter((match) => match.status === "pending").length ===
+                0 && (
+                <div className="text-center py-8">
+                  <Award className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
+                  <p className="text-muted-foreground">No upcoming matches</p>
+                </div>
+              )}
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+
+      {/* Live Betting Sidebar */}
+      <div className="space-y-6">
+        <LiveBettingInterface tournamentId={tournamentId} />
+
+        {/* Live Stream - Coming Soon */}
+        {/* <OBSStreamPlayer
+          streamUrl={streamUrl}
+          streamKey={streamKey}
+          isLive={true}
+          title="Live Stream"
+        /> */}
+
+        {/* Connection Status */}
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <Activity className="h-5 w-5" />
+              Connection Status
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="flex items-center gap-2">
+              <div
+                className={`w-2 h-2 rounded-full ${
+                  isConnected ? "bg-green-500" : "bg-red-500"
+                }`}
+              />
+              <span className="text-sm">
+                {isConnected ? "Connected" : "Disconnected"}
+              </span>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
     </div>
   );
 }
