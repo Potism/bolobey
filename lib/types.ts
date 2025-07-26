@@ -4,6 +4,12 @@ export interface User {
   display_name: string;
   role: "player" | "admin";
   avatar_url: string | null;
+  shipping_address?: string;
+  phone_number?: string;
+  city?: string;
+  state_province?: string;
+  postal_code?: string;
+  country?: string;
   created_at: string;
   updated_at: string;
 }
@@ -217,4 +223,23 @@ export interface CreateBattle {
   finish_type: "burst" | "ringout" | "spinout";
   player1_points: number;
   player2_points: number;
+}
+
+export interface UserNotification {
+  id: string;
+  user_id: string;
+  type: "bet_won" | "bet_lost" | "bet_placed" | "prize_redemption" | "prize_approved" | "prize_shipped" | "prize_delivered" | "tournament_start" | "tournament_end" | "match_start" | "match_result" | "points_awarded" | "achievement_unlocked" | "system_announcement";
+  title: string;
+  message: string;
+  read: boolean;
+  data?: Record<string, unknown>;
+  priority: "low" | "normal" | "high" | "urgent";
+  created_at: string;
+}
+
+export interface UnreadNotificationCount {
+  user_id: string;
+  unread_count: number;
+  urgent_count: number;
+  high_priority_count: number;
 }

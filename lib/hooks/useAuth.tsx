@@ -9,6 +9,7 @@ interface AuthContextType {
   user: User | null;
   supabaseUser: SupabaseUser | null;
   loading: boolean;
+  setUser: (user: User | null) => void;
   signIn: (email: string, password: string) => Promise<{ error: Error | null }>;
   signUp: (
     email: string,
@@ -229,6 +230,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     user,
     supabaseUser,
     loading,
+    setUser,
     signIn,
     signUp,
     signOut,

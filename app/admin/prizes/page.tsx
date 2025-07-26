@@ -1,7 +1,10 @@
 import AdminPrizesDashboard from "@/components/admin-prizes-dashboard";
+import { AdminPrizesShipping } from "@/components/admin-prizes-shipping";
 import { Button } from "@/components/ui/button";
 import { ArrowLeft } from "lucide-react";
 import Link from "next/link";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Package, Truck } from "lucide-react";
 
 export default function AdminPrizesPage() {
   return (
@@ -19,11 +22,30 @@ export default function AdminPrizesPage() {
           🏆 Prizes Management
         </h1>
         <p className="text-gray-600 dark:text-gray-400 mt-2">
-          Manage prizes, redemptions, and view analytics
+          Manage prizes, redemptions, shipping, and view analytics
         </p>
       </div>
 
-      <AdminPrizesDashboard />
+      <Tabs defaultValue="dashboard" className="w-full">
+        <TabsList className="grid w-full grid-cols-2">
+          <TabsTrigger value="dashboard" className="flex items-center gap-2">
+            <Package className="h-4 w-4" />
+            Prizes Dashboard
+          </TabsTrigger>
+          <TabsTrigger value="shipping" className="flex items-center gap-2">
+            <Truck className="h-4 w-4" />
+            Shipping Management
+          </TabsTrigger>
+        </TabsList>
+
+        <TabsContent value="dashboard" className="mt-6">
+          <AdminPrizesDashboard />
+        </TabsContent>
+
+        <TabsContent value="shipping" className="mt-6">
+          <AdminPrizesShipping />
+        </TabsContent>
+      </Tabs>
     </div>
   );
 }

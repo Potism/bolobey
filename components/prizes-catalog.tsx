@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
+import Link from "next/link";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -153,6 +154,14 @@ export function PrizesCatalog() {
 
     setRedeeming(true);
     try {
+      // Check if user has shipping address
+      if (!user.shipping_address) {
+        setError(
+          "Please add your shipping address in your profile before redeeming prizes"
+        );
+        return;
+      }
+
       // Check if user has enough points
       if (userPoints < selectedPrize.points_cost) {
         setError("Insufficient points");
@@ -417,6 +426,7 @@ export function PrizesCatalog() {
                 onClick={() => {
                   setSelectedPrize(prize);
                   setShowRedemptionDialog(true);
+                  setError(null);
                 }}
                 disabled={
                   !user ||
@@ -547,6 +557,20 @@ export function PrizesCatalog() {
                     You need {selectedPrize.points_cost - userPoints} more
                     points to redeem this prize.
                   </p>
+                </div>
+              )}
+
+              {error && (
+                <div className="p-3 bg-red-50 border border-red-200 rounded-lg">
+                  <p className="text-red-600 text-sm">{error}</p>
+                  {error.includes("shipping address") && (
+                    <Link
+                      href="/profile"
+                      className="text-blue-600 hover:underline text-sm mt-2 inline-block"
+                    >
+                      Go to Profile Settings →
+                    </Link>
+                  )}
                 </div>
               )}
             </div>

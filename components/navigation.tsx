@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/button";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Swords, Plus, User, LogOut, Menu, Gift } from "lucide-react";
+import { EnhancedNotifications } from "@/components/enhanced-notifications";
 import { motion } from "framer-motion";
 import {
   DropdownMenu,
@@ -78,14 +79,6 @@ export function Navigation() {
             </motion.div>
             <motion.div whileHover={{ y: -2 }} transition={{ duration: 0.2 }}>
               <Link
-                href="/demo-tournament"
-                className="text-sm font-medium text-foreground/60 transition-colors hover:text-foreground"
-              >
-                V2 Demo
-              </Link>
-            </motion.div>
-            <motion.div whileHover={{ y: -2 }} transition={{ duration: 0.2 }}>
-              <Link
                 href="/prizes"
                 className="text-sm font-medium text-foreground/60 transition-colors hover:text-foreground flex items-center gap-1"
               >
@@ -98,6 +91,7 @@ export function Navigation() {
           {/* Desktop User Menu */}
           <div className="hidden md:flex items-center space-x-4">
             <ThemeToggle />
+            {user && <EnhancedNotifications />}
             {user ? (
               <div className="flex items-center space-x-3">
                 {isAdmin && (
@@ -192,6 +186,13 @@ export function Navigation() {
                   <div className="flex justify-center pb-4 border-b border-border/50">
                     <ThemeToggle />
                   </div>
+
+                  {/* Notifications */}
+                  {user && (
+                    <div className="flex justify-center pb-4 border-b border-border/50">
+                      <EnhancedNotifications />
+                    </div>
+                  )}
                   {/* Mobile Navigation Links */}
                   <div className="flex flex-col space-y-2">
                     <Link
@@ -261,6 +262,21 @@ export function Navigation() {
                             >
                               <Plus className="mr-3 h-4 w-4" />
                               Create Tournament
+                            </Link>
+                          </Button>
+                        )}
+                        {isAdmin && (
+                          <Button
+                            asChild
+                            className="justify-start"
+                            variant="ghost"
+                          >
+                            <Link
+                              href="/admin/prizes"
+                              onClick={handleMobileLinkClick}
+                            >
+                              <Gift className="mr-3 h-4 w-4" />
+                              Manage Prizes
                             </Link>
                           </Button>
                         )}
