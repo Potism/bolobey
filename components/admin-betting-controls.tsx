@@ -73,6 +73,16 @@ export function AdminBettingControls({
   );
   const [streamKey, setStreamKey] = useState<string>("");
 
+  // Enhanced match statistics
+  const [matchStats, setMatchStats] = useState<{
+    totalBets: number;
+    totalPoints: number;
+    player1Bets: number;
+    player2Bets: number;
+    player1Points: number;
+    player2Points: number;
+  } | null>(null);
+
   // Check if user is admin
   const isAdmin = user?.role === "admin";
 
@@ -314,6 +324,47 @@ export function AdminBettingControls({
     [currentMatch, fetchCurrentMatch]
   );
 
+  // Fetch match statistics
+  const fetchMatchStats = useCallback(async () => {
+    if (!currentMatch) return;
+
+    try {
+      const { data, error } = await supabase
+        .from("user_bets")
+        .select("bet_on_player_id, points_wagered")
+        .eq("match_id", currentMatch.id);
+
+      if (error) {
+        console.error("Error fetching match stats:", error);
+        return;
+      }
+
+      const stats = {
+        totalBets: data.length,
+        totalPoints: 0,
+        player1Bets: 0,
+        player2Bets: 0,
+        player1Points: 0,
+        player2Points: 0,
+      };
+
+      data.forEach((bet) => {
+        stats.totalPoints += bet.points_wagered;
+        if (bet.bet_on_player_id === currentMatch.player1_id) {
+          stats.player1Bets++;
+          stats.player1Points += bet.points_wagered;
+        } else {
+          stats.player2Bets++;
+          stats.player2Points += bet.points_wagered;
+        }
+      });
+
+      setMatchStats(stats);
+    } catch (error) {
+      console.error("Error fetching match stats:", error);
+    }
+  }, [currentMatch]);
+
   // Get player initials
   const getInitials = useCallback((name: string) => {
     return name
@@ -329,6 +380,10 @@ export function AdminBettingControls({
     fetchCurrentMatch();
     fetchParticipants();
   }, [fetchCurrentMatch, fetchParticipants]);
+
+  useEffect(() => {
+    fetchMatchStats();
+  }, [currentMatch?.id]);
 
   if (!isAdmin) {
     return (
@@ -470,6 +525,54 @@ export function AdminBettingControls({
           )}
         </CardContent>
       </Card>
+
+      {/* Enhanced Match Statistics */}
+      {currentMatch && matchStats && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <Target className="h-5 w-5" />
+              Match Statistics
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+              <div className="text-center p-3 bg-muted rounded-lg">
+                <p className="text-sm text-muted-foreground">Total Bets</p>
+                <p className="text-2xl font-bold">{matchStats.totalBets}</p>
+              </div>
+              <div className="text-center p-3 bg-muted rounded-lg">
+                <p className="text-sm text-muted-foreground">Total Points</p>
+                <p className="text-2xl font-bold text-green-600">
+                  {matchStats.totalPoints}
+                </p>
+              </div>
+              <div className="text-center p-3 bg-muted rounded-lg">
+                <p className="text-sm text-muted-foreground">
+                  {currentMatch.player1_name}
+                </p>
+                <p className="text-lg font-bold">
+                  {matchStats.player1Bets} bets
+                </p>
+                <p className="text-sm text-muted-foreground">
+                  {matchStats.player1Points} points
+                </p>
+              </div>
+              <div className="text-center p-3 bg-muted rounded-lg">
+                <p className="text-sm text-muted-foreground">
+                  {currentMatch.player2_name}
+                </p>
+                <p className="text-lg font-bold">
+                  {matchStats.player2Bets} bets
+                </p>
+                <p className="text-sm text-muted-foreground">
+                  {matchStats.player2Points} points
+                </p>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       {/* Create New Match */}
       <Card>

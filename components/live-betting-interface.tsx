@@ -4,14 +4,12 @@ import { useState, useEffect, useCallback } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Progress } from "@/components/ui/progress";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import {
   Timer,
-  Users,
   Trophy,
   Coins,
   AlertCircle,
@@ -59,6 +57,8 @@ interface BettingStats {
   player2_points: number;
   total_bets: number;
   total_points: number;
+  player1_odds: number; // New: dynamic odds
+  player2_odds: number; // New: dynamic odds
 }
 
 export function LiveBettingInterface({
@@ -146,7 +146,23 @@ export function LiveBettingInterface({
     }
   }, [user]);
 
-  // Fetch betting statistics
+  // Calculate dynamic odds based on betting patterns
+  const calculateOdds = useCallback((stats: BettingStats) => {
+    if (stats.total_points === 0) {
+      return { player1_odds: 2.0, player2_odds: 2.0 };
+    }
+
+    const player1_ratio = stats.player1_points / stats.total_points;
+    const player2_ratio = stats.player2_points / stats.total_points;
+
+    // Dynamic odds: more bets on a player = lower odds
+    const player1_odds = Math.max(1.5, 3.0 - player1_ratio * 2.0);
+    const player2_odds = Math.max(1.5, 3.0 - player2_ratio * 2.0);
+
+    return { player1_odds, player2_odds };
+  }, []);
+
+  // Fetch betting statistics with odds
   const fetchBettingStats = useCallback(async () => {
     if (!currentMatch) return;
 
@@ -168,6 +184,8 @@ export function LiveBettingInterface({
         player2_points: 0,
         total_bets: data.length,
         total_points: 0,
+        player1_odds: 2.0,
+        player2_odds: 2.0,
       };
 
       data.forEach((bet) => {
@@ -181,11 +199,16 @@ export function LiveBettingInterface({
         stats.total_points += bet.points_wagered;
       });
 
+      // Calculate dynamic odds
+      const odds = calculateOdds(stats);
+      stats.player1_odds = odds.player1_odds;
+      stats.player2_odds = odds.player2_odds;
+
       setBettingStats(stats);
     } catch (error) {
       console.error("Error fetching betting stats:", error);
     }
-  }, [currentMatch]);
+  }, [currentMatch, calculateOdds]);
 
   // Calculate time left until betting closes
   const calculateTimeLeft = useCallback((match: BettingMatch) => {
@@ -420,46 +443,41 @@ export function LiveBettingInterface({
           </div>
         </div>
 
-        {/* Betting Statistics */}
+        {/* Betting Statistics with Odds */}
         {bettingStats && (
           <div className="space-y-4">
-            <div className="flex items-center justify-between">
-              <span className="text-sm font-medium">Betting Statistics</span>
-              <Badge variant="outline">
-                <Users className="h-3 w-3 mr-1" />
-                {bettingStats.total_bets} bets
-              </Badge>
-            </div>
-
             <div className="grid grid-cols-2 gap-4">
               <div className="text-center p-3 bg-muted rounded-lg">
+                <p className="text-sm text-muted-foreground">Player 1</p>
+                <p className="text-lg font-bold">{currentMatch.player1_name}</p>
                 <p className="text-sm text-muted-foreground">
-                  {currentMatch.player1_name}
+                  {bettingStats.player1_bets} bets •{" "}
+                  {bettingStats.player1_points} pts
                 </p>
-                <p className="text-lg font-bold">{bettingStats.player1_bets}</p>
-                <p className="text-xs text-muted-foreground">
-                  {bettingStats.player1_points} points
+                <p className="text-lg font-bold text-green-600">
+                  {bettingStats.player1_odds.toFixed(2)}x odds
                 </p>
               </div>
               <div className="text-center p-3 bg-muted rounded-lg">
+                <p className="text-sm text-muted-foreground">Player 2</p>
+                <p className="text-lg font-bold">{currentMatch.player2_name}</p>
                 <p className="text-sm text-muted-foreground">
-                  {currentMatch.player2_name}
+                  {bettingStats.player2_bets} bets •{" "}
+                  {bettingStats.player2_points} pts
                 </p>
-                <p className="text-lg font-bold">{bettingStats.player2_bets}</p>
-                <p className="text-xs text-muted-foreground">
-                  {bettingStats.player2_points} points
+                <p className="text-lg font-bold text-green-600">
+                  {bettingStats.player2_odds.toFixed(2)}x odds
                 </p>
               </div>
             </div>
 
-            <Progress
-              value={
-                (bettingStats.player1_points /
-                  Math.max(bettingStats.total_points, 1)) *
-                100
-              }
-              className="h-2"
-            />
+            <div className="text-center p-3 bg-muted rounded-lg">
+              <p className="text-sm text-muted-foreground">Total Activity</p>
+              <p className="text-lg font-bold">
+                {bettingStats.total_bets} bets • {bettingStats.total_points}{" "}
+                points wagered
+              </p>
+            </div>
           </div>
         )}
 
@@ -506,6 +524,30 @@ export function LiveBettingInterface({
                 min="1"
                 max={userPoints}
               />
+
+              {/* Quick Bet Presets */}
+              <div className="flex gap-2 mt-2">
+                {[10, 25, 50, 100].map((preset) => (
+                  <Button
+                    key={preset}
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setBetAmount(preset.toString())}
+                    disabled={preset > userPoints}
+                    className="flex-1"
+                  >
+                    {preset}
+                  </Button>
+                ))}
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setBetAmount(userPoints.toString())}
+                  className="flex-1"
+                >
+                  All ({userPoints})
+                </Button>
+              </div>
             </div>
 
             <div className="grid grid-cols-2 gap-3">
@@ -517,13 +559,18 @@ export function LiveBettingInterface({
                 }
                 onClick={() => setSelectedPlayer(currentMatch.player1_id)}
                 disabled={isPlacingBet}
-                className="h-16"
+                className="h-16 relative"
               >
                 <div className="text-center">
                   <p className="font-semibold">{currentMatch.player1_name}</p>
                   <p className="text-xs text-muted-foreground">
                     Bet on Player 1
                   </p>
+                  {bettingStats && (
+                    <p className="text-xs font-bold text-green-600">
+                      {bettingStats.player1_odds.toFixed(2)}x odds
+                    </p>
+                  )}
                 </div>
               </Button>
 
@@ -535,13 +582,18 @@ export function LiveBettingInterface({
                 }
                 onClick={() => setSelectedPlayer(currentMatch.player2_id)}
                 disabled={isPlacingBet}
-                className="h-16"
+                className="h-16 relative"
               >
                 <div className="text-center">
                   <p className="font-semibold">{currentMatch.player2_name}</p>
                   <p className="text-xs text-muted-foreground">
                     Bet on Player 2
                   </p>
+                  {bettingStats && (
+                    <p className="text-xs font-bold text-green-600">
+                      {bettingStats.player2_odds.toFixed(2)}x odds
+                    </p>
+                  )}
                 </div>
               </Button>
             </div>
@@ -566,8 +618,20 @@ export function LiveBettingInterface({
               ) : (
                 <>
                   <Target className="h-4 w-4 mr-2" />
-                  Place Bet ({betAmount ? parseInt(betAmount) * 2 : 0} potential
-                  winnings)
+                  Place Bet (
+                  {betAmount && bettingStats
+                    ? `${parseInt(betAmount)} × ${
+                        selectedPlayer === currentMatch.player1_id
+                          ? bettingStats.player1_odds.toFixed(2)
+                          : bettingStats.player2_odds.toFixed(2)
+                      }x = ${(
+                        parseInt(betAmount) *
+                        (selectedPlayer === currentMatch.player1_id
+                          ? bettingStats.player1_odds
+                          : bettingStats.player2_odds)
+                      ).toFixed(0)} potential winnings`
+                    : "0 potential winnings"}
+                  )
                 </>
               )}
             </Button>

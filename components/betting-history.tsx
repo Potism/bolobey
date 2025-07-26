@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useMemo } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
@@ -16,6 +16,13 @@ import {
 } from "lucide-react";
 import { supabase } from "@/lib/supabase";
 import { useAuth } from "@/lib/hooks/useAuth";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 
 interface BettingHistoryItem {
   id: string;
@@ -49,6 +56,8 @@ export function BettingHistory({ tournamentId }: { tournamentId: string }) {
   const [stats, setStats] = useState<BettingStats | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [filter, setFilter] = useState<string>("all"); // New: filter state
+  const [sortBy, setSortBy] = useState<string>("date"); // New: sort state
 
   const fetchBettingHistory = useCallback(async () => {
     if (!user) return;
@@ -123,6 +132,50 @@ export function BettingHistory({ tournamentId }: { tournamentId: string }) {
   useEffect(() => {
     fetchBettingHistory();
   }, [fetchBettingHistory]);
+
+  // Filter and sort history
+  const filteredHistory = useMemo(() => {
+    let filtered = history;
+
+    // Apply filter
+    switch (filter) {
+      case "won":
+        filtered = history.filter((bet) => bet.status === "won");
+        break;
+      case "lost":
+        filtered = history.filter((bet) => bet.status === "lost");
+        break;
+      case "pending":
+        filtered = history.filter((bet) => bet.status === "pending");
+        break;
+      default:
+        filtered = history;
+    }
+
+    // Apply sort
+    switch (sortBy) {
+      case "amount":
+        filtered = [...filtered].sort(
+          (a, b) => b.points_wagered - a.points_wagered
+        );
+        break;
+      case "winnings":
+        filtered = [...filtered].sort((a, b) => {
+          const aWinnings = a.status === "won" ? a.potential_winnings : 0;
+          const bWinnings = b.status === "won" ? b.potential_winnings : 0;
+          return bWinnings - aWinnings;
+        });
+        break;
+      case "date":
+      default:
+        filtered = [...filtered].sort(
+          (a, b) =>
+            new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
+        );
+    }
+
+    return filtered;
+  }, [history, filter, sortBy]);
 
   const getStatusColor = (status: string) => {
     switch (status) {
@@ -216,7 +269,7 @@ export function BettingHistory({ tournamentId }: { tournamentId: string }) {
         </CardTitle>
       </CardHeader>
       <CardContent className="space-y-6">
-        {/* Stats Overview */}
+        {/* Enhanced Stats Overview */}
         {stats && (
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
             <div className="text-center p-3 bg-muted rounded-lg">
@@ -244,20 +297,55 @@ export function BettingHistory({ tournamentId }: { tournamentId: string }) {
           </div>
         )}
 
+        {/* Filter and Sort Controls */}
+        <div className="flex flex-col sm:flex-row gap-4 items-start sm:items-center justify-between">
+          <h3 className="font-semibold">Recent Bets</h3>
+
+          <div className="flex gap-2">
+            <Select value={filter} onValueChange={setFilter}>
+              <SelectTrigger className="w-32">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All Bets</SelectItem>
+                <SelectItem value="won">Won</SelectItem>
+                <SelectItem value="lost">Lost</SelectItem>
+                <SelectItem value="pending">Pending</SelectItem>
+              </SelectContent>
+            </Select>
+
+            <Select value={sortBy} onValueChange={setSortBy}>
+              <SelectTrigger className="w-32">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="date">Date</SelectItem>
+                <SelectItem value="amount">Amount</SelectItem>
+                <SelectItem value="winnings">Winnings</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+        </div>
+
         {/* Betting History List */}
         <div className="space-y-4">
-          <h3 className="font-semibold">Recent Bets</h3>
-          {history.length === 0 ? (
+          {filteredHistory.length === 0 ? (
             <div className="text-center py-8">
               <Target className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
-              <p className="text-muted-foreground">No betting history yet</p>
+              <p className="text-muted-foreground">
+                {filter === "all"
+                  ? "No betting history yet"
+                  : `No ${filter} bets found`}
+              </p>
               <p className="text-sm text-muted-foreground">
-                Start betting on matches to see your history here
+                {filter === "all"
+                  ? "Start betting on matches to see your history here"
+                  : "Try adjusting your filters or place some bets"}
               </p>
             </div>
           ) : (
             <div className="space-y-3">
-              {history.map((bet) => (
+              {filteredHistory.map((bet) => (
                 <div
                   key={bet.id}
                   className="flex items-center justify-between p-4 bg-muted rounded-lg"

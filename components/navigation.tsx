@@ -7,7 +7,7 @@ import { ThemeToggle } from "@/components/theme-toggle";
 import { Button } from "@/components/ui/button";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
-import { Swords, Plus, User, LogOut, Menu } from "lucide-react";
+import { Swords, Plus, User, LogOut, Menu, Gift } from "lucide-react";
 import { motion } from "framer-motion";
 import {
   DropdownMenu,
@@ -84,6 +84,15 @@ export function Navigation() {
                 V2 Demo
               </Link>
             </motion.div>
+            <motion.div whileHover={{ y: -2 }} transition={{ duration: 0.2 }}>
+              <Link
+                href="/prizes"
+                className="text-sm font-medium text-foreground/60 transition-colors hover:text-foreground flex items-center gap-1"
+              >
+                <Gift className="h-4 w-4" />
+                Prizes
+              </Link>
+            </motion.div>
           </div>
 
           {/* Desktop User Menu */}
@@ -134,6 +143,14 @@ export function Navigation() {
                         Profile
                       </Link>
                     </DropdownMenuItem>
+                    {isAdmin && (
+                      <DropdownMenuItem asChild>
+                        <Link href="/admin/prizes">
+                          <Gift className="mr-2 h-4 w-4" />
+                          Manage Prizes
+                        </Link>
+                      </DropdownMenuItem>
+                    )}
                     <DropdownMenuSeparator />
                     <DropdownMenuItem onClick={handleSignOut}>
                       <LogOut className="mr-2 h-4 w-4" />
@@ -190,6 +207,16 @@ export function Navigation() {
                       onClick={handleMobileLinkClick}
                     >
                       Leaderboard
+                    </Link>
+                  </div>
+                  <div>
+                    <Link
+                      href="/prizes"
+                      className="flex items-center px-3 py-3 text-sm font-medium text-foreground/80 transition-colors hover:text-foreground hover:bg-muted/50 rounded-lg"
+                      onClick={handleMobileLinkClick}
+                    >
+                      <Gift className="mr-3 h-4 w-4" />
+                      Prizes
                     </Link>
                   </div>
 
