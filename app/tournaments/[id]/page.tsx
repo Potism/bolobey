@@ -599,6 +599,7 @@ export default function TournamentPage() {
               }}
               streamUrl={(tournament as any).stream_url}
               streamKey={(tournament as any).stream_key}
+              youtubeVideoId={(tournament as any).youtube_video_id}
               onMatchClick={(matchId) => {
                 const match = formattedMatches.find((m) => m.id === matchId);
                 if (match) {

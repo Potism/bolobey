@@ -14,6 +14,7 @@ import { Alert, AlertDescription } from "@/components/ui/alert";
 import { TournamentChat } from "@/components/tournament-chat";
 import { AdminBettingControls } from "@/components/admin-betting-controls";
 import { OBSStreamPlayer } from "@/components/obs-stream-player";
+import { YouTubeStreamPlayer } from "@/components/youtube-stream-player";
 import {
   Dialog,
   DialogContent,
@@ -646,12 +647,22 @@ export default function TournamentManagePage() {
         {/* Streaming Tab */}
         {activeTab === "streaming" && (
           <div className="space-y-6">
+            {/* YouTube Stream Player */}
+            <YouTubeStreamPlayer
+              tournamentId={tournamentId}
+              isLive={tournament.status === "in_progress"}
+              title={`${tournament.name} - YouTube Live`}
+              youtubeVideoId={(tournament as any).youtube_video_id}
+              isAdmin={true}
+            />
+
+            {/* Legacy OBS Stream Player (for other platforms) */}
             <OBSStreamPlayer
               streamUrl={(tournament as any).stream_url}
               streamKey={(tournament as any).stream_key}
               tournamentId={tournamentId}
               isLive={tournament.status === "in_progress"}
-              title={`${tournament.name} - Live Stream`}
+              title={`${tournament.name} - Other Platforms`}
             />
           </div>
         )}
