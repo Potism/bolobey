@@ -9,6 +9,7 @@ import { EnhancedLiveBetting } from "@/components/enhanced-live-betting";
 import { LiveScoringWidget } from "@/components/live-scoring-widget";
 import { OBSStreamPlayer } from "@/components/obs-stream-player";
 import { YouTubeStreamPlayer } from "@/components/youtube-stream-player";
+import { SpectatorCounter } from "@/components/spectator-counter";
 import { useAuth } from "@/lib/hooks/useAuth";
 import { supabase } from "@/lib/supabase";
 import {
@@ -43,10 +44,17 @@ interface TournamentStats {
   spectators: number;
 }
 
+interface SpectatorCount {
+  active_spectators: number;
+  authenticated_spectators: number;
+  anonymous_spectators: number;
+}
+
 interface LiveTournamentDashboardProps {
   tournamentId: string;
   matches: Match[];
   stats: TournamentStats;
+  spectatorCount?: SpectatorCount;
   streamUrl?: string;
   streamKey?: string;
   youtubeVideoId?: string;
@@ -57,6 +65,7 @@ export function LiveTournamentDashboard({
   tournamentId,
   matches,
   stats,
+  spectatorCount,
   streamUrl,
   streamKey,
   youtubeVideoId,
@@ -143,15 +152,23 @@ export function LiveTournamentDashboard({
                 </span>
               </div>
 
-              <div className="flex items-center justify-between p-3 bg-muted rounded-lg">
-                <div className="flex items-center gap-2">
-                  <Eye className="h-4 w-4 text-blue-500" />
-                  <span className="text-sm">Spectators</span>
+              {spectatorCount ? (
+                <SpectatorCounter
+                  spectatorCount={spectatorCount}
+                  className="w-full"
+                  showDetails={true}
+                />
+              ) : (
+                <div className="flex items-center justify-between p-3 bg-muted rounded-lg">
+                  <div className="flex items-center gap-2">
+                    <Eye className="h-4 w-4 text-blue-500" />
+                    <span className="text-sm">Spectators</span>
+                  </div>
+                  <span className="text-xl font-bold text-blue-600">
+                    {stats.spectators}
+                  </span>
                 </div>
-                <span className="text-xl font-bold text-blue-600">
-                  {stats.spectators}
-                </span>
-              </div>
+              )}
 
               <div className="flex items-center justify-between p-3 bg-muted rounded-lg">
                 <div className="flex items-center gap-2">

@@ -24,6 +24,7 @@ import {
   Lock,
 } from "lucide-react";
 import { supabase } from "@/lib/supabase";
+import { useSpectatorTracking } from "@/lib/hooks/useSpectatorTracking";
 import Link from "next/link";
 
 interface Tournament {
@@ -80,6 +81,15 @@ export default function TournamentPage() {
   const [selectedMatch, setSelectedMatch] = useState<Match | null>(null);
   const [currentUser, setCurrentUser] = useState<any>(null);
   const [joining, setJoining] = useState(false);
+
+  // Initialize spectator tracking
+  const { spectatorCount } = useSpectatorTracking(tournamentId);
+
+  // Debug spectator tracking
+  useEffect(() => {
+    console.log("🎯 Tournament page - spectator count:", spectatorCount);
+    console.log("🎯 Tournament page - tournament ID:", tournamentId);
+  }, [spectatorCount, tournamentId]);
 
   useEffect(() => {
     fetchTournamentData();
@@ -601,8 +611,9 @@ export default function TournamentPage() {
                 totalMatches: matches.length,
                 currentRound: Math.max(...matches.map((m) => m.round), 1),
                 totalRounds: Math.max(...matches.map((m) => m.round), 1),
-                spectators: Math.floor(Math.random() * 50) + 10, // Mock spectator count
+                spectators: spectatorCount.active_spectators, // Real-time spectator count
               }}
+              spectatorCount={spectatorCount}
               streamUrl={(tournament as any).stream_url}
               streamKey={(tournament as any).stream_key}
               youtubeVideoId={(tournament as any).youtube_video_id}
