@@ -4,7 +4,8 @@ import { Button } from "@/components/ui/button";
 import { ArrowLeft } from "lucide-react";
 import Link from "next/link";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Package, Truck } from "lucide-react";
+import { Package, Truck, Activity } from "lucide-react";
+import { PerformanceMonitor } from "@/components/performance-monitor";
 
 export default function AdminPrizesPage() {
   return (
@@ -27,7 +28,7 @@ export default function AdminPrizesPage() {
       </div>
 
       <Tabs defaultValue="dashboard" className="w-full">
-        <TabsList className="grid w-full grid-cols-2">
+        <TabsList className="grid w-full grid-cols-3">
           <TabsTrigger value="dashboard" className="flex items-center gap-2">
             <Package className="h-4 w-4" />
             Prizes Dashboard
@@ -35,6 +36,10 @@ export default function AdminPrizesPage() {
           <TabsTrigger value="shipping" className="flex items-center gap-2">
             <Truck className="h-4 w-4" />
             Shipping Management
+          </TabsTrigger>
+          <TabsTrigger value="performance" className="flex items-center gap-2">
+            <Activity className="h-4 w-4" />
+            Performance
           </TabsTrigger>
         </TabsList>
 
@@ -44,6 +49,21 @@ export default function AdminPrizesPage() {
 
         <TabsContent value="shipping" className="mt-6">
           <AdminPrizesShipping />
+        </TabsContent>
+
+        <TabsContent value="performance" className="mt-6">
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            <PerformanceMonitor showDetails={true} />
+            <div className="space-y-4">
+              <h3 className="text-lg font-semibold">Performance Tips</h3>
+              <div className="space-y-2 text-sm text-muted-foreground">
+                <p>• Monitor cache hit rates for optimal performance</p>
+                <p>• Check response times for database queries</p>
+                <p>• Watch for memory usage spikes</p>
+                <p>• Monitor error rates and retry patterns</p>
+              </div>
+            </div>
+          </div>
         </TabsContent>
       </Tabs>
     </div>

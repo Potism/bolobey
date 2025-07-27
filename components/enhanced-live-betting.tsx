@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -19,6 +19,7 @@ import {
 } from "lucide-react";
 import { supabase } from "@/lib/supabase";
 import { useAuth } from "@/lib/hooks/useAuth";
+import { useOptimizedFetch } from "@/lib/hooks/useOptimizedFetch";
 
 interface BettingMatch {
   id: string;
@@ -86,9 +87,46 @@ export function EnhancedLiveBetting({
   // Quick bet amounts
   const quickBetAmounts = [10, 25, 50, 100, 250, 500];
 
-  // Fetch current betting match
-  const fetchCurrentMatch = useCallback(async () => {
-    try {
+  // Optimized fetch for current betting match
+  const {
+    data: currentMatchData,
+    loading: matchLoading,
+    refetch: refetchMatch,
+  } = useOptimizedFetch({
+    key: `current-match-${tournamentId}`,
+    fetcher: async () => {
+      console.log("🔍 Fetching betting data for tournament:", tournamentId);
+
+      // First, let's check if current_betting_matches view exists
+      const { error: viewError } = await supabase
+        .from("current_betting_matches")
+        .select("count")
+        .limit(1);
+
+      if (viewError) {
+        console.error("❌ current_betting_matches view error:", viewError);
+
+        // Fallback: try to get data from betting_matches table directly
+        console.log("🔄 Trying fallback to betting_matches table...");
+        const { data: fallbackData, error: fallbackError } = await supabase
+          .from("betting_matches")
+          .select("*")
+          .eq("tournament_id", tournamentId)
+          .in("status", ["betting_open", "betting_closed", "live"])
+          .order("created_at", { ascending: false })
+          .limit(1)
+          .single();
+
+        if (fallbackError) {
+          console.error("❌ Fallback betting_matches error:", fallbackError);
+          return null;
+        }
+
+        console.log("✅ Found betting match via fallback:", fallbackData);
+        return fallbackData;
+      }
+
+      // Original query to current_betting_matches view
       const { data, error } = await supabase
         .from("current_betting_matches")
         .select("*")
@@ -99,44 +137,50 @@ export function EnhancedLiveBetting({
         .single();
 
       if (error && error.code !== "PGRST116") {
-        console.error("Error fetching current match:", error);
-        return;
+        console.error("❌ Error fetching current match:", error);
+        return null;
       }
 
-      if (data) {
-        console.log("Current betting match data:", data);
-        setCurrentMatch(data);
-        calculateTimeLeft(data);
+      console.log("✅ Found betting match:", data);
+      return data;
+    },
+    retryOptions: { maxRetries: 3, delay: 1000, backoff: true },
+    staleTime: 30 * 1000, // 30 seconds
+  });
 
-        // Use the statistics from the view directly
-        const stats = {
-          player1_bets: 0, // Will be calculated from user_bets
-          player2_bets: 0, // Will be calculated from user_bets
-          player1_points: 0, // Will be calculated from user_bets
-          player2_points: 0, // Will be calculated from user_bets
-          total_bets: data.total_bets || 0,
-          total_points: data.total_points_wagered || 0,
-          player1_odds: 2.0,
-          player2_odds: 2.0,
-        };
+  // Update current match state when data changes
+  useEffect(() => {
+    if (currentMatchData) {
+      console.log("Current betting match data:", currentMatchData);
+      setCurrentMatch(currentMatchData);
+      calculateTimeLeft(currentMatchData);
 
-        console.log("Setting initial stats from view:", stats);
-        setBettingStats(stats);
+      // Use the statistics from the view directly
+      const stats = {
+        player1_bets: 0, // Will be calculated from user_bets
+        player2_bets: 0, // Will be calculated from user_bets
+        player1_points: 0, // Will be calculated from user_bets
+        player2_points: 0, // Will be calculated from user_bets
+        total_bets: currentMatchData.total_bets || 0,
+        total_points: currentMatchData.total_points_wagered || 0,
+        player1_odds: 2.0,
+        player2_odds: 2.0,
+      };
 
-        // Fetch detailed stats and recent bets
-        await fetchBettingStats(data.id);
-        await fetchRecentBets(data.id);
-        await fetchUserBet(data.id);
-      } else {
-        setCurrentMatch(null);
-        setBettingStats(null);
-        setRecentBets([]);
-        setUserBet(null);
-      }
-    } catch (error) {
-      console.error("Error fetching current match:", error);
+      console.log("Setting initial stats from view:", stats);
+      setBettingStats(stats);
+
+      // Fetch detailed stats and recent bets
+      fetchBettingStats(currentMatchData.id);
+      fetchRecentBets(currentMatchData.id);
+      fetchUserBet(currentMatchData.id);
+    } else {
+      setCurrentMatch(null);
+      setBettingStats(null);
+      setRecentBets([]);
+      setUserBet(null);
     }
-  }, [tournamentId]);
+  }, [currentMatchData]);
 
   // Calculate time left for betting
   const calculateTimeLeft = (match: BettingMatch) => {
@@ -344,6 +388,7 @@ export function EnhancedLiveBetting({
         setShowConfirmation(false);
 
         // Refresh data
+        await refetchMatch();
         await fetchBettingStats(currentMatch.id);
         await fetchRecentBets(currentMatch.id);
       }
@@ -373,9 +418,7 @@ export function EnhancedLiveBetting({
   };
 
   // Load data on mount and when tournament changes
-  useEffect(() => {
-    fetchCurrentMatch();
-  }, [fetchCurrentMatch]);
+  // Initial fetch is handled by useOptimizedFetch
 
   // Update timer
   useEffect(() => {
@@ -389,6 +432,10 @@ export function EnhancedLiveBetting({
   }, [currentMatch]);
 
   if (!currentMatch) {
+    console.log(
+      "🔍 No current betting match found for tournament:",
+      tournamentId
+    );
     return (
       <Card className="w-full bg-gradient-to-br from-slate-900 to-slate-800 border-slate-700">
         <CardHeader>
@@ -404,6 +451,10 @@ export function EnhancedLiveBetting({
             <p className="text-sm text-slate-500 mt-2">
               Check back when a match starts!
             </p>
+            <div className="mt-4 p-2 bg-slate-800 rounded text-xs text-slate-400">
+              <p>Debug: Tournament ID: {tournamentId}</p>
+              <p>Loading: {matchLoading ? "Yes" : "No"}</p>
+            </div>
           </div>
         </CardContent>
       </Card>

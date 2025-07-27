@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { useParams } from "next/navigation";
 import { motion } from "framer-motion";
 import { Navigation } from "@/components/navigation";
@@ -25,6 +25,8 @@ import {
 } from "lucide-react";
 import { supabase } from "@/lib/supabase";
 import { useSpectatorTracking } from "@/lib/hooks/useSpectatorTracking";
+import { useOptimizedFetch } from "@/lib/hooks/useOptimizedFetch";
+import ErrorBoundary from "@/lib/utils/error-boundary";
 import Link from "next/link";
 
 interface Tournament {
@@ -85,6 +87,13 @@ export default function TournamentPage() {
   // Initialize spectator tracking
   const { spectatorCount } = useSpectatorTracking(tournamentId);
 
+  const fetchCurrentUser = useCallback(async () => {
+    const {
+      data: { user },
+    } = await supabaseClient.auth.getUser();
+    setCurrentUser(user);
+  }, []);
+
   // Debug spectator tracking
   useEffect(() => {
     console.log("🎯 Tournament page - spectator count:", spectatorCount);
@@ -92,91 +101,101 @@ export default function TournamentPage() {
   }, [spectatorCount, tournamentId]);
 
   useEffect(() => {
-    fetchTournamentData();
     fetchCurrentUser();
-  }, [tournamentId]);
+  }, [fetchCurrentUser]);
 
-  const fetchCurrentUser = async () => {
-    const {
-      data: { user },
-    } = await supabaseClient.auth.getUser();
-    setCurrentUser(user);
-  };
+  // Optimized tournament data fetching with caching and error handling
+  const {
+    data: tournamentData,
+    loading: dataLoading,
+    error: dataError,
+    refetch,
+  } = useOptimizedFetch({
+    key: `tournament-${tournamentId}`,
+    fetcher: async () => {
+      // Fetch all data in parallel for better performance
+      const [tournamentResult, participantsResult, matchesResult] =
+        await Promise.all([
+          supabaseClient
+            .from("tournaments")
+            .select("*")
+            .eq("id", tournamentId)
+            .single(),
+          supabaseClient
+            .from("tournament_participants")
+            .select(
+              `
+            *,
+            users:user_id(display_name, avatar_url)
+          `
+            )
+            .eq("tournament_id", tournamentId),
+          supabaseClient
+            .from("matches")
+            .select("*")
+            .eq("tournament_id", tournamentId)
+            .order("round", { ascending: true })
+            .order("match_number", { ascending: true }),
+        ]);
 
-  const fetchTournamentData = async () => {
-    try {
-      setLoading(true);
-
-      // Fetch tournament details
-      const { data: tournamentData, error: tournamentError } =
-        await supabaseClient
-          .from("tournaments")
-          .select("*")
-          .eq("id", tournamentId)
-          .single();
-
-      if (tournamentError) throw tournamentError;
-      setTournament(tournamentData);
-
-      // Fetch participants
-      const { data: participantsData, error: participantsError } =
-        await supabaseClient
-          .from("tournament_participants")
-          .select(
-            `
-          *,
-          users:user_id(display_name, avatar_url)
-        `
-          )
-          .eq("tournament_id", tournamentId);
-
-      if (participantsError) {
+      // Handle errors
+      if (tournamentResult.error) throw tournamentResult.error;
+      if (participantsResult.error) {
         console.warn(
           "No participants found for tournament:",
-          participantsError
+          participantsResult.error
         );
-        setParticipants([]);
-      } else {
-        const formattedParticipants = (participantsData || []).map(
-          (p: any) => ({
-            id: p.id,
-            user_id: p.user_id,
-            tournament_id: p.tournament_id,
-            username: p.users?.display_name || "Unknown Player",
-            avatar_url: p.users?.avatar_url,
-            created_at: p.created_at,
-          })
-        );
-
-        console.log("Participants data:", {
-          raw: participantsData,
-          formatted: formattedParticipants,
-          count: formattedParticipants.length,
-        });
-        setParticipants(formattedParticipants);
+      }
+      if (matchesResult.error) {
+        console.warn("No matches found for tournament:", matchesResult.error);
       }
 
-      // Fetch matches
-      const { data: matchesData, error: matchesError } = await supabaseClient
-        .from("matches")
-        .select("*")
-        .eq("tournament_id", tournamentId)
-        .order("round", { ascending: true })
-        .order("match_number", { ascending: true });
+      // Format participants data
+      const formattedParticipants = (participantsResult.data || []).map(
+        (p: any) => ({
+          id: p.id,
+          user_id: p.user_id,
+          tournament_id: p.tournament_id,
+          username: p.users?.display_name || "Unknown Player",
+          avatar_url: p.users?.avatar_url,
+          created_at: p.created_at,
+        })
+      );
 
-      if (matchesError) {
-        console.warn("No matches found for tournament:", matchesError);
-        setMatches([]);
-      } else {
-        setMatches(matchesData || []);
-      }
-    } catch (err) {
-      console.error("Error fetching tournament data:", err);
+      return {
+        tournament: tournamentResult.data,
+        participants: formattedParticipants,
+        matches: matchesResult.data || [],
+      };
+    },
+    retryOptions: { maxRetries: 3, delay: 1000, backoff: true },
+    onError: (error) => {
+      console.error("Tournament data fetch failed:", error);
       setError("Failed to load tournament data");
-    } finally {
+    },
+  });
+
+  // Update state when optimized data is available
+  useEffect(() => {
+    if (tournamentData) {
+      setTournament(tournamentData.tournament);
+      setParticipants(tournamentData.participants);
+      setMatches(tournamentData.matches);
       setLoading(false);
     }
-  };
+  }, [tournamentData]);
+
+  // Update loading state
+  useEffect(() => {
+    setLoading(dataLoading);
+  }, [dataLoading]);
+
+  // Update error state
+  useEffect(() => {
+    if (dataError) {
+      setError(dataError.message);
+    }
+  }, [dataError]);
 
   const formatMatchesForComponents = (): any[] => {
     return matches.map((match) => {
@@ -259,7 +278,7 @@ export default function TournamentPage() {
       if (error) throw error;
 
       // Refresh data
-      await fetchTournamentData();
+      await refetch();
     } catch (err) {
       console.error("Error updating match score:", err);
     }
@@ -352,7 +371,7 @@ export default function TournamentPage() {
       console.log("Successfully joined tournament:", data);
 
       // Refresh data to show updated participant count
-      await fetchTournamentData();
+      await refetch();
     } catch (err) {
       console.error("Error joining tournament:", err);
       // You could add a toast notification here
@@ -410,313 +429,325 @@ export default function TournamentPage() {
   const isCreator = tournament.created_by === currentUser?.id;
 
   return (
-    <div className="min-h-screen bg-background">
-      <Navigation />
+    <ErrorBoundary>
+      <div className="min-h-screen bg-background">
+        <Navigation />
 
-      <div className="container mx-auto px-4 sm:px-6 py-4 sm:py-8">
-        {/* Tournament Header */}
-        <motion.div
-          initial={{ opacity: 0, y: -20 }}
-          animate={{ opacity: 1, y: 0 }}
-          className="mb-6 sm:mb-8"
-        >
-          <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between mb-4 sm:mb-6 gap-4">
-            <div className="flex-1">
-              <h1 className="text-2xl sm:text-3xl lg:text-4xl font-bold mb-2">
-                {tournament.name}
-              </h1>
-              <p className="text-base sm:text-lg lg:text-xl text-muted-foreground mb-4">
-                {tournament.description}
-              </p>
+        <div className="container mx-auto px-4 sm:px-6 py-4 sm:py-8">
+          {/* Tournament Header */}
+          <motion.div
+            initial={{ opacity: 0, y: -20 }}
+            animate={{ opacity: 1, y: 0 }}
+            className="mb-6 sm:mb-8"
+          >
+            <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between mb-4 sm:mb-6 gap-4">
+              <div className="flex-1">
+                <h1 className="text-2xl sm:text-3xl lg:text-4xl font-bold mb-2">
+                  {tournament.name}
+                </h1>
+                <p className="text-base sm:text-lg lg:text-xl text-muted-foreground mb-4">
+                  {tournament.description}
+                </p>
 
-              <div className="flex flex-wrap gap-2 sm:gap-4 mb-4 sm:mb-6">
-                <Badge
-                  variant="outline"
-                  className="flex items-center gap-1 sm:gap-2 text-xs sm:text-sm"
-                >
-                  <Calendar className="h-3 w-3 sm:h-4 sm:w-4" />
-                  {new Date(tournament.start_date).toLocaleDateString()}
-                </Badge>
-                <Badge
-                  variant="outline"
-                  className="flex items-center gap-1 sm:gap-2 text-xs sm:text-sm"
-                >
-                  <Users className="h-3 w-3 sm:h-4 sm:w-4" />
-                  {participants.length}/{tournament.max_participants}{" "}
-                  Participants
-                </Badge>
-                <Badge
-                  variant={
-                    tournament.status === "in_progress"
-                      ? "default"
-                      : "secondary"
-                  }
-                  className="text-xs sm:text-sm"
-                >
-                  {tournament.status}
-                </Badge>
-                <Badge variant="outline" className="text-xs sm:text-sm">
-                  {tournament.format.replace("_", " ")}
-                </Badge>
-              </div>
-            </div>
-
-            {/* Participant List */}
-            {participants.length > 0 && (
-              <div className="mt-4">
-                <h3 className="text-sm font-medium text-muted-foreground mb-2">
-                  Participants ({participants.length})
-                </h3>
-                <div className="flex flex-wrap gap-1 sm:gap-2">
-                  {participants.map((participant) => (
-                    <Badge
-                      key={participant.id}
-                      variant="outline"
-                      className="text-xs"
-                    >
-                      {participant.username}
-                    </Badge>
-                  ))}
+                <div className="flex flex-wrap gap-2 sm:gap-4 mb-4 sm:mb-6">
+                  <Badge
+                    variant="outline"
+                    className="flex items-center gap-1 sm:gap-2 text-xs sm:text-sm"
+                  >
+                    <Calendar className="h-3 w-3 sm:h-4 sm:w-4" />
+                    {new Date(tournament.start_date).toLocaleDateString()}
+                  </Badge>
+                  <Badge
+                    variant="outline"
+                    className="flex items-center gap-1 sm:gap-2 text-xs sm:text-sm"
+                  >
+                    <Users className="h-3 w-3 sm:h-4 sm:w-4" />
+                    {participants.length}/{tournament.max_participants}{" "}
+                    Participants
+                  </Badge>
+                  <Badge
+                    variant={
+                      tournament.status === "in_progress"
+                        ? "default"
+                        : "secondary"
+                    }
+                    className="text-xs sm:text-sm"
+                  >
+                    {tournament.status}
+                  </Badge>
+                  <Badge variant="outline" className="text-xs sm:text-sm">
+                    {tournament.format.replace("_", " ")}
+                  </Badge>
                 </div>
               </div>
-            )}
 
-            <div className="flex flex-col sm:flex-row gap-2 sm:gap-3">
-              {isCreator && (
+              {/* Participant List */}
+              {participants.length > 0 && (
+                <div className="mt-4">
+                  <h3 className="text-sm font-medium text-muted-foreground mb-2">
+                    Participants ({participants.length})
+                  </h3>
+                  <div className="flex flex-wrap gap-1 sm:gap-2">
+                    {participants.map((participant) => (
+                      <Badge
+                        key={participant.id}
+                        variant="outline"
+                        className="text-xs"
+                      >
+                        {participant.username}
+                      </Badge>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              <div className="flex flex-col sm:flex-row gap-2 sm:gap-3">
+                {isCreator && (
+                  <Button
+                    asChild
+                    variant="outline"
+                    className="text-xs sm:text-sm"
+                  >
+                    <Link href={`/tournaments/${tournamentId}/manage`}>
+                      <Settings className="h-3 w-3 sm:h-4 sm:w-4 mr-1 sm:mr-2" />
+                      <span className="hidden sm:inline">Manage</span>
+                      <span className="sm:hidden">Manage</span>
+                    </Link>
+                  </Button>
+                )}
+
+                {/* Join Button States */}
+                {!isCreator && (
+                  <>
+                    {isParticipant ? (
+                      <Badge
+                        variant="default"
+                        className="px-2 sm:px-3 py-2 bg-green-600 hover:bg-green-700 text-xs sm:text-sm"
+                      >
+                        <Users className="h-3 w-3 sm:h-4 sm:w-4 mr-1 sm:mr-2" />
+                        <span className="hidden sm:inline">Joined ✓</span>
+                        <span className="sm:hidden">Joined</span>
+                      </Badge>
+                    ) : tournament.status === "open" ? (
+                      <Button
+                        onClick={handleJoinTournament}
+                        disabled={joining}
+                        className="bg-green-600 hover:bg-green-700 text-xs sm:text-sm"
+                      >
+                        <Users className="h-3 w-3 sm:h-4 sm:w-4 mr-1 sm:mr-2" />
+                        {joining ? (
+                          <span className="hidden sm:inline">Joining...</span>
+                        ) : (
+                          <>
+                            <span className="hidden sm:inline">
+                              Join Tournament
+                            </span>
+                            <span className="sm:hidden">Join</span>
+                          </>
+                        )}
+                      </Button>
+                    ) : (
+                      <Badge
+                        variant="secondary"
+                        className="px-2 sm:px-3 py-2 text-xs sm:text-sm"
+                      >
+                        <Lock className="h-3 w-3 sm:h-4 sm:w-4 mr-1 sm:mr-2" />
+                        <span className="hidden sm:inline">
+                          Registration Closed
+                        </span>
+                        <span className="sm:hidden">Closed</span>
+                      </Badge>
+                    )}
+                  </>
+                )}
+
                 <Button
                   asChild
                   variant="outline"
                   className="text-xs sm:text-sm"
                 >
-                  <Link href={`/tournaments/${tournamentId}/manage`}>
-                    <Settings className="h-3 w-3 sm:h-4 sm:w-4 mr-1 sm:mr-2" />
-                    <span className="hidden sm:inline">Manage</span>
-                    <span className="sm:hidden">Manage</span>
+                  <Link href={`/tournaments/${tournamentId}/bracket`}>
+                    <Eye className="h-3 w-3 sm:h-4 sm:w-4 mr-1 sm:mr-2" />
+                    <span className="hidden sm:inline">View Bracket</span>
+                    <span className="sm:hidden">Bracket</span>
                   </Link>
                 </Button>
-              )}
+              </div>
+            </div>
+          </motion.div>
 
-              {/* Join Button States */}
-              {!isCreator && (
-                <>
-                  {isParticipant ? (
-                    <Badge
-                      variant="default"
-                      className="px-2 sm:px-3 py-2 bg-green-600 hover:bg-green-700 text-xs sm:text-sm"
-                    >
-                      <Users className="h-3 w-3 sm:h-4 sm:w-4 mr-1 sm:mr-2" />
-                      <span className="hidden sm:inline">Joined ✓</span>
-                      <span className="sm:hidden">Joined</span>
-                    </Badge>
-                  ) : tournament.status === "open" ? (
-                    <Button
-                      onClick={handleJoinTournament}
-                      disabled={joining}
-                      className="bg-green-600 hover:bg-green-700 text-xs sm:text-sm"
-                    >
-                      <Users className="h-3 w-3 sm:h-4 sm:w-4 mr-1 sm:mr-2" />
-                      {joining ? (
-                        <span className="hidden sm:inline">Joining...</span>
-                      ) : (
-                        <>
-                          <span className="hidden sm:inline">
-                            Join Tournament
-                          </span>
-                          <span className="sm:hidden">Join</span>
-                        </>
-                      )}
+          {/* V2 Features Tabs */}
+          <Tabs
+            value={activeTab}
+            onValueChange={setActiveTab}
+            className="w-full"
+          >
+            <TabsList className="grid w-full grid-cols-2 sm:grid-cols-4 mb-6 sm:mb-8 gap-1 sm:gap-2">
+              <TabsTrigger
+                value="dashboard"
+                className="flex items-center gap-1 sm:gap-2 text-xs sm:text-sm px-2 sm:px-3"
+              >
+                <BarChart3 className="h-3 w-3 sm:h-4 sm:w-4" />
+                <span className="hidden sm:inline">Live Dashboard</span>
+                <span className="sm:hidden">Dashboard</span>
+              </TabsTrigger>
+              <TabsTrigger
+                value="bracket"
+                className="flex items-center gap-1 sm:gap-2 text-xs sm:text-sm px-2 sm:px-3"
+              >
+                <Trophy className="h-3 w-3 sm:h-4 sm:w-4" />
+                <span className="hidden sm:inline">Bracket</span>
+                <span className="sm:hidden">Bracket</span>
+              </TabsTrigger>
+              <TabsTrigger
+                value="scoring"
+                className="flex items-center gap-1 sm:gap-2 text-xs sm:text-sm px-2 sm:px-3"
+              >
+                <Zap className="h-3 w-3 sm:h-4 sm:w-4" />
+                <span className="hidden sm:inline">Live Scoring</span>
+                <span className="sm:hidden">Scoring</span>
+              </TabsTrigger>
+              <TabsTrigger
+                value="chat"
+                className="flex items-center gap-1 sm:gap-2 text-xs sm:text-sm px-2 sm:px-3"
+              >
+                <MessageCircle className="h-3 w-3 sm:h-4 sm:w-4" />
+                <span className="hidden sm:inline">Chat</span>
+                <span className="sm:hidden">Chat</span>
+              </TabsTrigger>
+            </TabsList>
+
+            <TabsContent value="dashboard" className="space-y-4 sm:space-y-6">
+              <div className="text-center mb-4 sm:mb-6">
+                <h2 className="text-xl sm:text-2xl font-bold mb-2">
+                  Live Tournament Dashboard
+                </h2>
+                <p className="text-sm sm:text-base text-muted-foreground">
+                  Real-time tournament progress with live statistics and match
+                  updates.
+                </p>
+              </div>
+
+              <LiveTournamentDashboard
+                tournamentId={tournamentId}
+                matches={formattedMatches}
+                stats={{
+                  totalParticipants: participants.length,
+                  completedMatches: matches.filter(
+                    (m) => m.status === "completed"
+                  ).length,
+                  totalMatches: matches.length,
+                  currentRound: Math.max(...matches.map((m) => m.round), 1),
+                  totalRounds: Math.max(...matches.map((m) => m.round), 1),
+                  spectators: spectatorCount.active_spectators, // Real-time spectator count
+                }}
+                spectatorCount={spectatorCount}
+                streamUrl={(tournament as any).stream_url}
+                streamKey={(tournament as any).stream_key}
+                youtubeVideoId={(tournament as any).youtube_video_id}
+                onMatchClick={(matchId) => {
+                  const match = formattedMatches.find((m) => m.id === matchId);
+                  if (match) {
+                    setSelectedMatch(match);
+                    setActiveTab("scoring");
+                  }
+                }}
+              />
+            </TabsContent>
+
+            <TabsContent value="bracket" className="space-y-4 sm:space-y-6">
+              <div className="text-center mb-4 sm:mb-6">
+                <h2 className="text-xl sm:text-2xl font-bold mb-2">
+                  Tournament Bracket
+                </h2>
+                <p className="text-sm sm:text-base text-muted-foreground">
+                  Interactive tournament bracket with live updates and match
+                  management.
+                </p>
+              </div>
+
+              <EnhancedBracket
+                tournamentId={tournamentId}
+                matches={formattedMatches}
+                onMatchClick={handleMatchClick}
+              />
+            </TabsContent>
+
+            <TabsContent value="scoring" className="space-y-4 sm:space-y-6">
+              <div className="text-center mb-4 sm:mb-6">
+                <h2 className="text-xl sm:text-2xl font-bold mb-2">
+                  Live Match Scoring
+                </h2>
+                <p className="text-sm sm:text-base text-muted-foreground">
+                  Real-time scoring with instant updates across all devices.
+                </p>
+              </div>
+
+              {selectedMatch ? (
+                <div className="w-full max-w-4xl mx-auto px-2 sm:px-0">
+                  <MatchScoring
+                    matchId={selectedMatch.id}
+                    tournamentId={tournamentId}
+                    player1={
+                      formattedMatches.find((m) => m.id === selectedMatch.id)
+                        ?.player1!
+                    }
+                    player2={
+                      formattedMatches.find((m) => m.id === selectedMatch.id)
+                        ?.player2!
+                    }
+                    status={
+                      selectedMatch.status as
+                        | "pending"
+                        | "in_progress"
+                        | "completed"
+                    }
+                    onScoreUpdate={handleScoreUpdate}
+                  />
+                </div>
+              ) : (
+                <Card className="max-w-2xl mx-auto">
+                  <CardContent className="pt-6 text-center">
+                    <Trophy className="h-12 w-12 mx-auto mb-4 text-muted-foreground" />
+                    <h3 className="text-lg font-semibold mb-2">
+                      Select a Match
+                    </h3>
+                    <p className="text-muted-foreground mb-4">
+                      Choose a match from the bracket or dashboard to start
+                      scoring.
+                    </p>
+                    <Button onClick={() => setActiveTab("bracket")}>
+                      View Bracket
                     </Button>
-                  ) : (
-                    <Badge
-                      variant="secondary"
-                      className="px-2 sm:px-3 py-2 text-xs sm:text-sm"
-                    >
-                      <Lock className="h-3 w-3 sm:h-4 sm:w-4 mr-1 sm:mr-2" />
-                      <span className="hidden sm:inline">
-                        Registration Closed
-                      </span>
-                      <span className="sm:hidden">Closed</span>
-                    </Badge>
-                  )}
-                </>
+                  </CardContent>
+                </Card>
               )}
+            </TabsContent>
 
-              <Button asChild variant="outline" className="text-xs sm:text-sm">
-                <Link href={`/tournaments/${tournamentId}/bracket`}>
-                  <Eye className="h-3 w-3 sm:h-4 sm:w-4 mr-1 sm:mr-2" />
-                  <span className="hidden sm:inline">View Bracket</span>
-                  <span className="sm:hidden">Bracket</span>
-                </Link>
-              </Button>
-            </div>
-          </div>
-        </motion.div>
+            <TabsContent value="chat" className="space-y-4 sm:space-y-6">
+              <div className="text-center mb-4 sm:mb-6">
+                <h2 className="text-xl sm:text-2xl font-bold mb-2">
+                  Tournament Chat
+                </h2>
+                <p className="text-sm sm:text-base text-muted-foreground">
+                  Real-time chat for tournament participants and spectators.
+                </p>
+              </div>
 
-        {/* V2 Features Tabs */}
-        <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-          <TabsList className="grid w-full grid-cols-2 sm:grid-cols-4 mb-6 sm:mb-8 gap-1 sm:gap-2">
-            <TabsTrigger
-              value="dashboard"
-              className="flex items-center gap-1 sm:gap-2 text-xs sm:text-sm px-2 sm:px-3"
-            >
-              <BarChart3 className="h-3 w-3 sm:h-4 sm:w-4" />
-              <span className="hidden sm:inline">Live Dashboard</span>
-              <span className="sm:hidden">Dashboard</span>
-            </TabsTrigger>
-            <TabsTrigger
-              value="bracket"
-              className="flex items-center gap-1 sm:gap-2 text-xs sm:text-sm px-2 sm:px-3"
-            >
-              <Trophy className="h-3 w-3 sm:h-4 sm:w-4" />
-              <span className="hidden sm:inline">Bracket</span>
-              <span className="sm:hidden">Bracket</span>
-            </TabsTrigger>
-            <TabsTrigger
-              value="scoring"
-              className="flex items-center gap-1 sm:gap-2 text-xs sm:text-sm px-2 sm:px-3"
-            >
-              <Zap className="h-3 w-3 sm:h-4 sm:w-4" />
-              <span className="hidden sm:inline">Live Scoring</span>
-              <span className="sm:hidden">Scoring</span>
-            </TabsTrigger>
-            <TabsTrigger
-              value="chat"
-              className="flex items-center gap-1 sm:gap-2 text-xs sm:text-sm px-2 sm:px-3"
-            >
-              <MessageCircle className="h-3 w-3 sm:h-4 sm:w-4" />
-              <span className="hidden sm:inline">Chat</span>
-              <span className="sm:hidden">Chat</span>
-            </TabsTrigger>
-          </TabsList>
-
-          <TabsContent value="dashboard" className="space-y-4 sm:space-y-6">
-            <div className="text-center mb-4 sm:mb-6">
-              <h2 className="text-xl sm:text-2xl font-bold mb-2">
-                Live Tournament Dashboard
-              </h2>
-              <p className="text-sm sm:text-base text-muted-foreground">
-                Real-time tournament progress with live statistics and match
-                updates.
-              </p>
-            </div>
-
-            <LiveTournamentDashboard
-              tournamentId={tournamentId}
-              matches={formattedMatches}
-              stats={{
-                totalParticipants: participants.length,
-                completedMatches: matches.filter(
-                  (m) => m.status === "completed"
-                ).length,
-                totalMatches: matches.length,
-                currentRound: Math.max(...matches.map((m) => m.round), 1),
-                totalRounds: Math.max(...matches.map((m) => m.round), 1),
-                spectators: spectatorCount.active_spectators, // Real-time spectator count
-              }}
-              spectatorCount={spectatorCount}
-              streamUrl={(tournament as any).stream_url}
-              streamKey={(tournament as any).stream_key}
-              youtubeVideoId={(tournament as any).youtube_video_id}
-              onMatchClick={(matchId) => {
-                const match = formattedMatches.find((m) => m.id === matchId);
-                if (match) {
-                  setSelectedMatch(match);
-                  setActiveTab("scoring");
-                }
-              }}
-            />
-          </TabsContent>
-
-          <TabsContent value="bracket" className="space-y-4 sm:space-y-6">
-            <div className="text-center mb-4 sm:mb-6">
-              <h2 className="text-xl sm:text-2xl font-bold mb-2">
-                Tournament Bracket
-              </h2>
-              <p className="text-sm sm:text-base text-muted-foreground">
-                Interactive tournament bracket with live updates and match
-                management.
-              </p>
-            </div>
-
-            <EnhancedBracket
-              tournamentId={tournamentId}
-              matches={formattedMatches}
-              onMatchClick={handleMatchClick}
-            />
-          </TabsContent>
-
-          <TabsContent value="scoring" className="space-y-4 sm:space-y-6">
-            <div className="text-center mb-4 sm:mb-6">
-              <h2 className="text-xl sm:text-2xl font-bold mb-2">
-                Live Match Scoring
-              </h2>
-              <p className="text-sm sm:text-base text-muted-foreground">
-                Real-time scoring with instant updates across all devices.
-              </p>
-            </div>
-
-            {selectedMatch ? (
               <div className="w-full max-w-4xl mx-auto px-2 sm:px-0">
-                <MatchScoring
-                  matchId={selectedMatch.id}
+                <TournamentChat
                   tournamentId={tournamentId}
-                  player1={
-                    formattedMatches.find((m) => m.id === selectedMatch.id)
-                      ?.player1!
+                  currentUserId={currentUser?.id || "anonymous"}
+                  currentUsername={
+                    currentUser?.user_metadata?.full_name || "Anonymous User"
                   }
-                  player2={
-                    formattedMatches.find((m) => m.id === selectedMatch.id)
-                      ?.player2!
-                  }
-                  status={
-                    selectedMatch.status as
-                      | "pending"
-                      | "in_progress"
-                      | "completed"
-                  }
-                  onScoreUpdate={handleScoreUpdate}
+                  currentUserAvatar={currentUser?.user_metadata?.avatar_url}
                 />
               </div>
-            ) : (
-              <Card className="max-w-2xl mx-auto">
-                <CardContent className="pt-6 text-center">
-                  <Trophy className="h-12 w-12 mx-auto mb-4 text-muted-foreground" />
-                  <h3 className="text-lg font-semibold mb-2">Select a Match</h3>
-                  <p className="text-muted-foreground mb-4">
-                    Choose a match from the bracket or dashboard to start
-                    scoring.
-                  </p>
-                  <Button onClick={() => setActiveTab("bracket")}>
-                    View Bracket
-                  </Button>
-                </CardContent>
-              </Card>
-            )}
-          </TabsContent>
-
-          <TabsContent value="chat" className="space-y-4 sm:space-y-6">
-            <div className="text-center mb-4 sm:mb-6">
-              <h2 className="text-xl sm:text-2xl font-bold mb-2">
-                Tournament Chat
-              </h2>
-              <p className="text-sm sm:text-base text-muted-foreground">
-                Real-time chat for tournament participants and spectators.
-              </p>
-            </div>
-
-            <div className="w-full max-w-4xl mx-auto px-2 sm:px-0">
-              <TournamentChat
-                tournamentId={tournamentId}
-                currentUserId={currentUser?.id || "anonymous"}
-                currentUsername={
-                  currentUser?.user_metadata?.full_name || "Anonymous User"
-                }
-                currentUserAvatar={currentUser?.user_metadata?.avatar_url}
-              />
-            </div>
-          </TabsContent>
-        </Tabs>
+            </TabsContent>
+          </Tabs>
+        </div>
       </div>
-    </div>
+    </ErrorBoundary>
   );
 }

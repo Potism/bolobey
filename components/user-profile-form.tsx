@@ -21,6 +21,9 @@ import {
 import { supabase } from "@/lib/supabase";
 import { useAuth } from "@/lib/hooks/useAuth";
 import { User as UserType } from "@/lib/types";
+import { useOptimizedFetch } from "@/lib/hooks/useOptimizedFetch";
+import { retrySupabaseOperation } from "@/lib/utils/retry-utils";
+import ErrorBoundary from "@/lib/utils/error-boundary";
 
 interface UserProfileFormProps {
   onProfileUpdated?: (user: UserType) => void;
@@ -107,179 +110,184 @@ export function UserProfileForm({ onProfileUpdated }: UserProfileFormProps) {
     shippingAddress || phoneNumber || city || stateProvince || postalCode;
 
   return (
-    <Card className="w-full max-w-2xl mx-auto">
-      <CardHeader>
-        <CardTitle className="flex items-center gap-2">
-          <User className="h-5 w-5" />
-          Profile Settings
-        </CardTitle>
-      </CardHeader>
-      <CardContent>
-        <form onSubmit={handleSubmit} className="space-y-6">
-          {/* Basic Information */}
-          <div className="space-y-4">
-            <h3 className="text-lg font-semibold flex items-center gap-2">
-              <User className="h-4 w-4" />
-              Basic Information
-            </h3>
-
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <Label htmlFor="displayName">Display Name</Label>
-                <Input
-                  id="displayName"
-                  value={displayName}
-                  onChange={(e) => setDisplayName(e.target.value)}
-                  placeholder="Enter your display name"
-                  required
-                />
-              </div>
-
-              <div className="space-y-2">
-                <Label htmlFor="email">Email</Label>
-                <Input
-                  id="email"
-                  value={user?.email || ""}
-                  disabled
-                  className="bg-muted"
-                />
-                <p className="text-xs text-muted-foreground">
-                  Email cannot be changed
-                </p>
-              </div>
-            </div>
-          </div>
-
-          {/* Shipping Information */}
-          <div className="space-y-4">
-            <div className="flex items-center justify-between">
+    <ErrorBoundary>
+      <Card className="w-full max-w-2xl mx-auto">
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <User className="h-5 w-5" />
+            Profile Settings
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          <form onSubmit={handleSubmit} className="space-y-6">
+            {/* Basic Information */}
+            <div className="space-y-4">
               <h3 className="text-lg font-semibold flex items-center gap-2">
-                <Package className="h-4 w-4" />
-                Shipping Information
+                <User className="h-4 w-4" />
+                Basic Information
               </h3>
-              {hasShippingInfo && (
-                <Badge variant="secondary" className="flex items-center gap-1">
-                  <CheckCircle className="h-3 w-3" />
-                  Complete
-                </Badge>
-              )}
-            </div>
 
-            <Alert>
-              <Package className="h-4 w-4" />
-              <AlertDescription>
-                This information is used for shipping prizes when you win them.
-                All fields are optional but recommended for faster prize
-                delivery.
-              </AlertDescription>
-            </Alert>
-
-            <div className="space-y-2">
-              <Label htmlFor="shippingAddress">Shipping Address</Label>
-              <Textarea
-                id="shippingAddress"
-                value={shippingAddress}
-                onChange={(e) => setShippingAddress(e.target.value)}
-                placeholder="Enter your complete shipping address"
-                rows={3}
-              />
-            </div>
-
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <Label htmlFor="phoneNumber">Phone Number</Label>
-                <div className="relative">
-                  <Phone className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label htmlFor="displayName">Display Name</Label>
                   <Input
-                    id="phoneNumber"
-                    value={phoneNumber}
-                    onChange={(e) => setPhoneNumber(e.target.value)}
-                    placeholder="+63 912 345 6789"
-                    className="pl-10"
+                    id="displayName"
+                    value={displayName}
+                    onChange={(e) => setDisplayName(e.target.value)}
+                    placeholder="Enter your display name"
+                    required
+                  />
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="email">Email</Label>
+                  <Input
+                    id="email"
+                    value={user?.email || ""}
+                    disabled
+                    className="bg-muted"
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    Email cannot be changed
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            {/* Shipping Information */}
+            <div className="space-y-4">
+              <div className="flex items-center justify-between">
+                <h3 className="text-lg font-semibold flex items-center gap-2">
+                  <Package className="h-4 w-4" />
+                  Shipping Information
+                </h3>
+                {hasShippingInfo && (
+                  <Badge
+                    variant="secondary"
+                    className="flex items-center gap-1"
+                  >
+                    <CheckCircle className="h-3 w-3" />
+                    Complete
+                  </Badge>
+                )}
+              </div>
+
+              <Alert>
+                <Package className="h-4 w-4" />
+                <AlertDescription>
+                  This information is used for shipping prizes when you win
+                  them. All fields are optional but recommended for faster prize
+                  delivery.
+                </AlertDescription>
+              </Alert>
+
+              <div className="space-y-2">
+                <Label htmlFor="shippingAddress">Shipping Address</Label>
+                <Textarea
+                  id="shippingAddress"
+                  value={shippingAddress}
+                  onChange={(e) => setShippingAddress(e.target.value)}
+                  placeholder="Enter your complete shipping address"
+                  rows={3}
+                />
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label htmlFor="phoneNumber">Phone Number</Label>
+                  <div className="relative">
+                    <Phone className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
+                    <Input
+                      id="phoneNumber"
+                      value={phoneNumber}
+                      onChange={(e) => setPhoneNumber(e.target.value)}
+                      placeholder="+63 912 345 6789"
+                      className="pl-10"
+                    />
+                  </div>
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="city">City</Label>
+                  <Input
+                    id="city"
+                    value={city}
+                    onChange={(e) => setCity(e.target.value)}
+                    placeholder="Enter your city"
                   />
                 </div>
               </div>
 
-              <div className="space-y-2">
-                <Label htmlFor="city">City</Label>
-                <Input
-                  id="city"
-                  value={city}
-                  onChange={(e) => setCity(e.target.value)}
-                  placeholder="Enter your city"
-                />
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div className="space-y-2">
+                  <Label htmlFor="stateProvince">State/Province</Label>
+                  <Input
+                    id="stateProvince"
+                    value={stateProvince}
+                    onChange={(e) => setStateProvince(e.target.value)}
+                    placeholder="e.g., Metro Manila"
+                  />
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="postalCode">Postal Code</Label>
+                  <Input
+                    id="postalCode"
+                    value={postalCode}
+                    onChange={(e) => setPostalCode(e.target.value)}
+                    placeholder="1234"
+                  />
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="country">Country</Label>
+                  <SimpleCountrySelector
+                    value={country}
+                    onValueChange={(value) => {
+                      console.log("Country changed to:", value);
+                      setCountry(value);
+                    }}
+                    placeholder="Select your country..."
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    Current country value: {country}
+                  </p>
+                </div>
               </div>
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-              <div className="space-y-2">
-                <Label htmlFor="stateProvince">State/Province</Label>
-                <Input
-                  id="stateProvince"
-                  value={stateProvince}
-                  onChange={(e) => setStateProvince(e.target.value)}
-                  placeholder="e.g., Metro Manila"
-                />
-              </div>
-
-              <div className="space-y-2">
-                <Label htmlFor="postalCode">Postal Code</Label>
-                <Input
-                  id="postalCode"
-                  value={postalCode}
-                  onChange={(e) => setPostalCode(e.target.value)}
-                  placeholder="1234"
-                />
-              </div>
-
-              <div className="space-y-2">
-                <Label htmlFor="country">Country</Label>
-                <SimpleCountrySelector
-                  value={country}
-                  onValueChange={(value) => {
-                    console.log("Country changed to:", value);
-                    setCountry(value);
-                  }}
-                  placeholder="Select your country..."
-                />
-                <p className="text-xs text-muted-foreground">
-                  Current country value: {country}
-                </p>
-              </div>
-            </div>
-          </div>
-
-          {/* Status Messages */}
-          {success && (
-            <Alert>
-              <CheckCircle className="h-4 w-4" />
-              <AlertDescription>{success}</AlertDescription>
-            </Alert>
-          )}
-
-          {error && (
-            <Alert variant="destructive">
-              <AlertCircle className="h-4 w-4" />
-              <AlertDescription>{error}</AlertDescription>
-            </Alert>
-          )}
-
-          {/* Submit Button */}
-          <Button type="submit" disabled={loading} className="w-full">
-            {loading ? (
-              <>
-                <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2" />
-                Updating Profile...
-              </>
-            ) : (
-              <>
-                <Save className="h-4 w-4 mr-2" />
-                Save Profile
-              </>
+            {/* Status Messages */}
+            {success && (
+              <Alert>
+                <CheckCircle className="h-4 w-4" />
+                <AlertDescription>{success}</AlertDescription>
+              </Alert>
             )}
-          </Button>
-        </form>
-      </CardContent>
-    </Card>
+
+            {error && (
+              <Alert variant="destructive">
+                <AlertCircle className="h-4 w-4" />
+                <AlertDescription>{error}</AlertDescription>
+              </Alert>
+            )}
+
+            {/* Submit Button */}
+            <Button type="submit" disabled={loading} className="w-full">
+              {loading ? (
+                <>
+                  <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2" />
+                  Updating Profile...
+                </>
+              ) : (
+                <>
+                  <Save className="h-4 w-4 mr-2" />
+                  Save Profile
+                </>
+              )}
+            </Button>
+          </form>
+        </CardContent>
+      </Card>
+    </ErrorBoundary>
   );
 }
