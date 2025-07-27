@@ -6,15 +6,10 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
+
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
+import { SimpleCountrySelector } from "@/components/ui/country-selector";
 import {
   User,
   Phone,
@@ -44,18 +39,21 @@ export function UserProfileForm({ onProfileUpdated }: UserProfileFormProps) {
   const [city, setCity] = useState("");
   const [stateProvince, setStateProvince] = useState("");
   const [postalCode, setPostalCode] = useState("");
-  const [country, setCountry] = useState("Philippines");
+  const [country, setCountry] = useState("PH");
 
   // Load user data
   useEffect(() => {
     if (user) {
+      console.log("Loading user data:", user);
       setDisplayName(user.display_name || "");
       setShippingAddress(user.shipping_address || "");
       setPhoneNumber(user.phone_number || "");
       setCity(user.city || "");
       setStateProvince(user.state_province || "");
       setPostalCode(user.postal_code || "");
-      setCountry(user.country || "Philippines");
+      const userCountry = user.country || "PH";
+      console.log("Setting country to:", userCountry);
+      setCountry(userCountry);
     }
   }, [user]);
 
@@ -236,25 +234,17 @@ export function UserProfileForm({ onProfileUpdated }: UserProfileFormProps) {
 
               <div className="space-y-2">
                 <Label htmlFor="country">Country</Label>
-                <Select value={country} onValueChange={setCountry}>
-                  <SelectTrigger>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="Philippines">Philippines</SelectItem>
-                    <SelectItem value="United States">United States</SelectItem>
-                    <SelectItem value="Canada">Canada</SelectItem>
-                    <SelectItem value="United Kingdom">
-                      United Kingdom
-                    </SelectItem>
-                    <SelectItem value="Australia">Australia</SelectItem>
-                    <SelectItem value="Germany">Germany</SelectItem>
-                    <SelectItem value="France">France</SelectItem>
-                    <SelectItem value="Japan">Japan</SelectItem>
-                    <SelectItem value="South Korea">South Korea</SelectItem>
-                    <SelectItem value="Other">Other</SelectItem>
-                  </SelectContent>
-                </Select>
+                <SimpleCountrySelector
+                  value={country}
+                  onValueChange={(value) => {
+                    console.log("Country changed to:", value);
+                    setCountry(value);
+                  }}
+                  placeholder="Select your country..."
+                />
+                <p className="text-xs text-muted-foreground">
+                  Current country value: {country}
+                </p>
               </div>
             </div>
           </div>

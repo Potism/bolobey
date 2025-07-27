@@ -390,6 +390,12 @@ export default function TournamentPage() {
   }
 
   const formattedMatches = formatMatchesForComponents();
+  console.log("Tournament page - raw matches:", matches);
+  console.log("Tournament page - formatted matches:", formattedMatches);
+  console.log(
+    "Tournament page - matches with in_progress status:",
+    matches.filter((m) => m.status === "in_progress")
+  );
   const isParticipant = participants.some((p) => p.user_id === currentUser?.id);
   const isCreator = tournament.created_by === currentUser?.id;
 

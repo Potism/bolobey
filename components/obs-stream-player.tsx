@@ -4,9 +4,8 @@ import { useState, useEffect, useCallback } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Alert, AlertDescription } from "@/components/ui/alert";
 import { supabase } from "@/lib/supabase";
-import { Play, Settings, CheckCircle } from "lucide-react";
+import { Play } from "lucide-react";
 
 interface OBSStreamPlayerProps {
   streamUrl?: string;
@@ -60,11 +59,6 @@ export function OBSStreamPlayer({
     // For YouTube Live
     if (streamUrl.includes("youtube.com/embed/")) {
       return streamUrl;
-    }
-
-    // For Facebook Gaming (fallback)
-    if (streamUrl.includes("rtmp://live-api-s.facebook.com/rtmp/")) {
-      return null;
     }
 
     return streamUrl;
@@ -140,60 +134,6 @@ export function OBSStreamPlayer({
             </div>
           )}
         </div>
-
-        {/* Stream Info */}
-        {(streamKey || currentStreamKey) && (
-          <div className="space-y-2">
-            <div className="flex items-center gap-2 text-sm text-muted-foreground">
-              <CheckCircle className="h-4 w-4" />
-              <span>Live Stream Embedded</span>
-            </div>
-            <div className="text-xs text-muted-foreground">
-              Facebook Gaming stream embedded directly in the web app.
-            </div>
-          </div>
-        )}
-
-        {/* OBS Setup Instructions */}
-        {(streamKey || currentStreamKey) && (
-          <Alert>
-            <Settings className="h-4 w-4" />
-            <AlertDescription>
-              <div className="space-y-2">
-                <p className="font-medium">YouTube Live OBS Setup:</p>
-                <ol className="list-decimal list-inside space-y-1 text-sm">
-                  <li>Open OBS Studio</li>
-                  <li>Go to Settings → Stream</li>
-                  <li>Set Service to &quot;YouTube / YouTube Gaming&quot;</li>
-                  <li>Server: rtmp://a.rtmp.youtube.com/live2</li>
-                  <li>Stream Key: {streamKey || "Your YouTube stream key"}</li>
-                  <li>Click &quot;Start Streaming&quot;</li>
-                  <li>Stream will appear in the player above</li>
-                </ol>
-                {currentStreamKey && (
-                  <div className="mt-2 p-2 bg-muted rounded text-xs">
-                    <strong>Your Stream Key:</strong> {currentStreamKey}
-                  </div>
-                )}
-                <div className="mt-4 space-y-2">
-                  <Button
-                    onClick={() =>
-                      window.open("https://www.facebook.com/gaming", "_blank")
-                    }
-                    className="w-full"
-                    variant="outline"
-                  >
-                    Watch on Facebook Gaming (Alternative)
-                  </Button>
-                  <p className="text-xs text-muted-foreground">
-                    If the embedded player doesn't work, use this button to
-                    watch on Facebook directly.
-                  </p>
-                </div>
-              </div>
-            </AlertDescription>
-          </Alert>
-        )}
       </CardContent>
     </Card>
   );

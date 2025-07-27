@@ -2,10 +2,11 @@
 
 import { useState, useEffect, useCallback } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Progress } from "@/components/ui/progress";
-import { LiveBettingInterface } from "@/components/live-betting-interface";
+import { EnhancedLiveBetting } from "@/components/enhanced-live-betting";
+import { LiveScoringWidget } from "@/components/live-scoring-widget";
 import { OBSStreamPlayer } from "@/components/obs-stream-player";
 import { YouTubeStreamPlayer } from "@/components/youtube-stream-player";
 import { useAuth } from "@/lib/hooks/useAuth";
@@ -16,9 +17,12 @@ import {
   Play,
   Clock,
   TrendingUp,
-  Award,
   Activity,
   Coins,
+  Eye,
+  Zap,
+  Target,
+  Crown,
 } from "lucide-react";
 
 interface Match {
@@ -61,6 +65,7 @@ export function LiveTournamentDashboard({
   const [isConnected] = useState(true);
   const { user } = useAuth();
   const [userPoints, setUserPoints] = useState(0);
+  const [currentMatch, setCurrentMatch] = useState<Match | null>(null);
 
   // Fetch user's points balance
   const fetchUserPoints = useCallback(async () => {
@@ -84,20 +89,20 @@ export function LiveTournamentDashboard({
 
   useEffect(() => {
     fetchUserPoints();
-  }, [user?.id]); // Only depend on user ID
+  }, [user?.id]);
 
-  const getStatusColor = (status: string) => {
-    switch (status) {
-      case "completed":
-        return "bg-green-500";
-      case "in_progress":
-        return "bg-yellow-500";
-      case "pending":
-        return "bg-gray-500";
-      default:
-        return "bg-gray-500";
+  // Set current match to the first live match
+  useEffect(() => {
+    console.log("Dashboard - received matches:", matches);
+    console.log("Dashboard - looking for in_progress matches");
+
+    const liveMatch = matches.find((match) => match.status === "in_progress");
+    console.log("Dashboard - found live match:", liveMatch);
+
+    if (liveMatch) {
+      setCurrentMatch(liveMatch);
     }
-  };
+  }, [matches]);
 
   const getInitials = (name: string) => {
     return name
@@ -108,316 +113,362 @@ export function LiveTournamentDashboard({
       .slice(0, 2);
   };
 
+  const liveMatches = matches.filter((match) => match.status === "in_progress");
+  const upcomingMatches = matches
+    .filter((match) => match.status === "pending")
+    .slice(0, 3);
+
   return (
     <div className="space-y-6">
-      {/* Live Stream Player - Full Width */}
-      {(streamUrl || streamKey || youtubeVideoId) && (
-        <Card className="w-full">
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <Play className="h-5 w-5" />
-              Live Stream
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="space-y-4">
-              {/* YouTube Stream Player */}
-              {youtubeVideoId && (
-                <YouTubeStreamPlayer
-                  tournamentId={tournamentId}
-                  isLive={true}
-                  title="Live Tournament Stream"
-                  youtubeVideoId={youtubeVideoId}
-                  isAdmin={false}
-                />
-              )}
-
-              {/* Legacy OBS Stream Player */}
-              {!youtubeVideoId && (streamUrl || streamKey) && (
-                <OBSStreamPlayer
-                  streamUrl={streamUrl}
-                  streamKey={streamKey}
-                  tournamentId={tournamentId}
-                  isLive={true}
-                  title="Live Tournament Stream"
-                />
-              )}
-            </div>
-          </CardContent>
-        </Card>
-      )}
-
-      {/* Main Content Grid */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* Main Tournament Stats */}
-        <div className="lg:col-span-2 space-y-6">
-          {/* Header Stats */}
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-            <Card>
-              <CardContent className="p-4">
-                <div className="flex items-center gap-2">
-                  <Users className="h-4 w-4 text-muted-foreground" />
-                  <div>
-                    <p className="text-sm text-muted-foreground">
-                      Participants
-                    </p>
-                    <p className="text-2xl font-bold">
-                      {stats.totalParticipants}
-                    </p>
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-
-            <Card>
-              <CardContent className="p-4">
-                <div className="flex items-center gap-2">
-                  <Coins className="h-4 w-4 text-muted-foreground" />
-                  <div>
-                    <p className="text-sm text-muted-foreground">Your Points</p>
-                    <p className="text-2xl font-bold">{userPoints}</p>
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-
-            <Card>
-              <CardContent className="p-4">
-                <div className="flex items-center gap-2">
-                  <Play className="h-4 w-4 text-muted-foreground" />
-                  <div>
-                    <p className="text-sm text-muted-foreground">Matches</p>
-                    <p className="text-2xl font-bold">
-                      {stats.completedMatches}/{stats.totalMatches}
-                    </p>
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-
-            <Card>
-              <CardContent className="p-4">
-                <div className="flex items-center gap-2">
-                  <Trophy className="h-4 w-4 text-muted-foreground" />
-                  <div>
-                    <p className="text-sm text-muted-foreground">Round</p>
-                    <p className="text-2xl font-bold">
-                      {stats.currentRound}/{stats.totalRounds}
-                    </p>
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-
-            <Card>
-              <CardContent className="p-4">
-                <div className="flex items-center gap-2">
-                  <Activity className="h-4 w-4 text-muted-foreground" />
-                  <div>
-                    <p className="text-sm text-muted-foreground">Spectators</p>
-                    <p className="text-2xl font-bold">{stats.spectators}</p>
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-          </div>
-
-          {/* Progress Bar */}
+      {/* Main Layout Grid */}
+      <div className="grid grid-cols-1 xl:grid-cols-4 gap-6">
+        {/* Left Sidebar - Player Stats & Info */}
+        <div className="xl:col-span-1 space-y-6">
+          {/* User Points & Stats */}
           <Card>
             <CardHeader>
-              <CardTitle className="flex items-center gap-2">
+              <CardTitle className="flex items-center gap-2 text-lg">
+                <Coins className="h-5 w-5" />
+                Your Stats
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="flex items-center justify-between p-3 bg-muted rounded-lg">
+                <div className="flex items-center gap-2">
+                  <Coins className="h-4 w-4 text-yellow-500" />
+                  <span className="text-sm">Points Balance</span>
+                </div>
+                <span className="text-xl font-bold text-yellow-600">
+                  {userPoints}
+                </span>
+              </div>
+
+              <div className="flex items-center justify-between p-3 bg-muted rounded-lg">
+                <div className="flex items-center gap-2">
+                  <Eye className="h-4 w-4 text-blue-500" />
+                  <span className="text-sm">Spectators</span>
+                </div>
+                <span className="text-xl font-bold text-blue-600">
+                  {stats.spectators}
+                </span>
+              </div>
+
+              <div className="flex items-center justify-between p-3 bg-muted rounded-lg">
+                <div className="flex items-center gap-2">
+                  <Users className="h-4 w-4 text-green-500" />
+                  <span className="text-sm">Participants</span>
+                </div>
+                <span className="text-xl font-bold text-green-600">
+                  {stats.totalParticipants}
+                </span>
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* Tournament Progress */}
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2 text-lg">
                 <TrendingUp className="h-5 w-5" />
                 Tournament Progress
               </CardTitle>
             </CardHeader>
-            <CardContent>
+            <CardContent className="space-y-4">
               <div className="space-y-2">
                 <div className="flex justify-between text-sm">
-                  <span>Progress</span>
+                  <span>Matches Completed</span>
                   <span>
-                    {Math.round(
-                      (stats.completedMatches / stats.totalMatches) * 100
-                    )}
-                    %
+                    {stats.completedMatches}/{stats.totalMatches}
                   </span>
                 </div>
                 <Progress
-                  value={(stats.completedMatches / stats.totalMatches) * 100}
+                  value={
+                    stats.totalMatches > 0
+                      ? (stats.completedMatches / stats.totalMatches) * 100
+                      : 0
+                  }
                   className="h-2"
                 />
+                <div className="text-xs text-muted-foreground text-center">
+                  {stats.totalMatches > 0
+                    ? `${Math.round(
+                        (stats.completedMatches / stats.totalMatches) * 100
+                      )}% Complete`
+                    : "0% Complete"}
+                </div>
+              </div>
+
+              <div className="flex items-center justify-between p-3 bg-muted rounded-lg">
+                <div className="flex items-center gap-2">
+                  <Trophy className="h-4 w-4 text-purple-500" />
+                  <span className="text-sm">Current Round</span>
+                </div>
+                <span className="text-lg font-bold text-purple-600">
+                  {stats.currentRound}/{stats.totalRounds}
+                </span>
               </div>
             </CardContent>
           </Card>
 
-          {/* Live Matches */}
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <Play className="h-5 w-5" />
-                Live Matches
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="space-y-4">
-                {matches
-                  .filter((match) => match.status === "in_progress")
-                  .map((match) => (
-                    <div
-                      key={match.id}
-                      className="flex items-center justify-between p-4 bg-muted rounded-lg cursor-pointer hover:bg-muted/80 transition-colors"
-                      onClick={() => onMatchClick?.(match.id)}
-                    >
-                      <div className="flex items-center gap-4">
-                        <div className="flex items-center gap-2">
-                          <Avatar className="h-8 w-8">
-                            <AvatarImage src={match.player1.avatar} />
-                            <AvatarFallback>
-                              {getInitials(match.player1.name)}
-                            </AvatarFallback>
-                          </Avatar>
-                          <span className="font-medium">
-                            {match.player1.name}
-                          </span>
-                          <span className="text-lg font-bold">
-                            {match.player1.score}
-                          </span>
-                        </div>
-
-                        <div className="text-muted-foreground">vs</div>
-
-                        <div className="flex items-center gap-2">
-                          <span className="text-lg font-bold">
-                            {match.player2.score}
-                          </span>
-                          <span className="font-medium">
-                            {match.player2.name}
-                          </span>
-                          <Avatar className="h-8 w-8">
-                            <AvatarImage src={match.player2.avatar} />
-                            <AvatarFallback>
-                              {getInitials(match.player2.name)}
-                            </AvatarFallback>
-                          </Avatar>
-                        </div>
-                      </div>
-
-                      <div className="flex items-center gap-2">
-                        <div
-                          className={`w-2 h-2 rounded-full ${getStatusColor(
-                            match.status
-                          )}`}
-                        />
-                        <Badge variant="destructive">
-                          <Play className="h-3 w-3 mr-1" />
-                          LIVE
-                        </Badge>
-                      </div>
-                    </div>
-                  ))}
-
-                {matches.filter((match) => match.status === "in_progress")
-                  .length === 0 && (
-                  <div className="text-center py-8">
-                    <Clock className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
-                    <p className="text-muted-foreground">
-                      No live matches at the moment
-                    </p>
+          {/* Current Match Info */}
+          {currentMatch && (
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2 text-lg">
+                  <Zap className="h-5 w-5 text-yellow-500" />
+                  Live Match
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div className="text-center p-3 bg-yellow-500/10 rounded-lg border border-yellow-500/20">
+                  <div className="flex items-center justify-center gap-2 mb-2">
+                    <div className="w-2 h-2 bg-yellow-500 rounded-full animate-pulse"></div>
+                    <span className="text-sm font-medium text-yellow-600">
+                      LIVE NOW
+                    </span>
                   </div>
-                )}
-              </div>
-            </CardContent>
-          </Card>
+
+                  <div className="flex items-center justify-between">
+                    <div className="text-center">
+                      <Avatar className="h-12 w-12 mx-auto mb-2">
+                        <AvatarImage src={currentMatch.player1.avatar} />
+                        <AvatarFallback>
+                          {getInitials(currentMatch.player1.name)}
+                        </AvatarFallback>
+                      </Avatar>
+                      <p className="text-sm font-medium">
+                        {currentMatch.player1.name}
+                      </p>
+                      <p className="text-2xl font-bold text-blue-600">
+                        {currentMatch.player1.score}
+                      </p>
+                    </div>
+
+                    <div className="text-muted-foreground text-lg font-bold">
+                      VS
+                    </div>
+
+                    <div className="text-center">
+                      <Avatar className="h-12 w-12 mx-auto mb-2">
+                        <AvatarImage src={currentMatch.player2.avatar} />
+                        <AvatarFallback>
+                          {getInitials(currentMatch.player2.name)}
+                        </AvatarFallback>
+                      </Avatar>
+                      <p className="text-sm font-medium">
+                        {currentMatch.player2.name}
+                      </p>
+                      <p className="text-2xl font-bold text-red-600">
+                        {currentMatch.player2.score}
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="mt-3 text-xs text-muted-foreground">
+                    Round {currentMatch.round} • Match{" "}
+                    {currentMatch.matchNumber}
+                  </div>
+
+                  {/* Quick Score Update Buttons */}
+                  {currentMatch.status === "in_progress" && (
+                    <div className="mt-3 grid grid-cols-2 gap-2">
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => onMatchClick?.(currentMatch.id)}
+                        className="text-xs"
+                      >
+                        <Zap className="h-3 w-3 mr-1" />
+                        Full Scoring
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => onMatchClick?.(currentMatch.id)}
+                        className="text-xs"
+                      >
+                        <Trophy className="h-3 w-3 mr-1" />
+                        View Details
+                      </Button>
+                    </div>
+                  )}
+                </div>
+              </CardContent>
+            </Card>
+          )}
 
           {/* Upcoming Matches */}
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <Clock className="h-5 w-5" />
-                Upcoming Matches
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="space-y-4">
-                {matches
-                  .filter((match) => match.status === "pending")
-                  .slice(0, 3)
-                  .map((match) => (
-                    <div
-                      key={match.id}
-                      className="flex items-center justify-between p-4 bg-muted rounded-lg cursor-pointer hover:bg-muted/80 transition-colors"
-                      onClick={() => onMatchClick?.(match.id)}
-                    >
-                      <div className="flex items-center gap-4">
-                        <div className="flex items-center gap-2">
-                          <Avatar className="h-8 w-8">
-                            <AvatarImage src={match.player1.avatar} />
-                            <AvatarFallback>
-                              {getInitials(match.player1.name)}
-                            </AvatarFallback>
-                          </Avatar>
-                          <span className="font-medium">
-                            {match.player1.name}
-                          </span>
-                        </div>
-
-                        <div className="text-muted-foreground">vs</div>
-
-                        <div className="flex items-center gap-2">
-                          <span className="font-medium">
-                            {match.player2.name}
-                          </span>
-                          <Avatar className="h-8 w-8">
-                            <AvatarImage src={match.player2.avatar} />
-                            <AvatarFallback>
-                              {getInitials(match.player2.name)}
-                            </AvatarFallback>
-                          </Avatar>
-                        </div>
-                      </div>
-
+          {upcomingMatches.length > 0 && (
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2 text-lg">
+                  <Clock className="h-5 w-5" />
+                  Upcoming
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-3">
+                {upcomingMatches.map((match) => (
+                  <div
+                    key={match.id}
+                    className="p-3 bg-muted rounded-lg cursor-pointer hover:bg-muted/80 transition-colors"
+                    onClick={() => onMatchClick?.(match.id)}
+                  >
+                    <div className="flex items-center justify-between text-sm">
                       <div className="flex items-center gap-2">
-                        <Badge variant="secondary">
-                          Round {match.round} - Match {match.matchNumber}
-                        </Badge>
+                        <Avatar className="h-6 w-6">
+                          <AvatarImage src={match.player1.avatar} />
+                          <AvatarFallback className="text-xs">
+                            {getInitials(match.player1.name)}
+                          </AvatarFallback>
+                        </Avatar>
+                        <span className="font-medium truncate">
+                          {match.player1.name}
+                        </span>
+                      </div>
+                      <span className="text-muted-foreground">vs</span>
+                      <div className="flex items-center gap-2">
+                        <span className="font-medium truncate">
+                          {match.player2.name}
+                        </span>
+                        <Avatar className="h-6 w-6">
+                          <AvatarImage src={match.player2.avatar} />
+                          <AvatarFallback className="text-xs">
+                            {getInitials(match.player2.name)}
+                          </AvatarFallback>
+                        </Avatar>
                       </div>
                     </div>
-                  ))}
-
-                {matches.filter((match) => match.status === "pending")
-                  .length === 0 && (
-                  <div className="text-center py-8">
-                    <Award className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
-                    <p className="text-muted-foreground">No upcoming matches</p>
+                    <div className="text-xs text-muted-foreground mt-1">
+                      Round {match.round} • Match {match.matchNumber}
+                    </div>
                   </div>
-                )}
-              </div>
-            </CardContent>
-          </Card>
+                ))}
+              </CardContent>
+            </Card>
+          )}
+        </div>
+
+        {/* Center - Live Stream */}
+        <div className="xl:col-span-2">
+          {streamUrl || streamKey || youtubeVideoId ? (
+            <Card className="w-full">
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <Play className="h-5 w-5" />
+                  Live Tournament Stream
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="space-y-4">
+                  {/* YouTube Stream Player */}
+                  {youtubeVideoId && (
+                    <YouTubeStreamPlayer
+                      tournamentId={tournamentId}
+                      isLive={true}
+                      title="Live Tournament Stream"
+                      youtubeVideoId={youtubeVideoId}
+                      isAdmin={false}
+                    />
+                  )}
+
+                  {/* Legacy OBS Stream Player */}
+                  {!youtubeVideoId && (streamUrl || streamKey) && (
+                    <OBSStreamPlayer
+                      streamUrl={streamUrl}
+                      streamKey={streamKey}
+                      tournamentId={tournamentId}
+                      isLive={true}
+                      title="Live Tournament Stream"
+                    />
+                  )}
+                </div>
+              </CardContent>
+            </Card>
+          ) : (
+            <Card className="w-full h-96 flex items-center justify-center">
+              <CardContent className="text-center">
+                <Play className="h-16 w-16 mx-auto text-muted-foreground mb-4" />
+                <h3 className="text-lg font-semibold mb-2">No Live Stream</h3>
+                <p className="text-muted-foreground">
+                  Stream will appear here when the tournament goes live
+                </p>
+              </CardContent>
+            </Card>
+          )}
+        </div>
+
+        {/* Right Sidebar - Live Betting & Scoring */}
+        <div className="xl:col-span-1 space-y-6">
+          <EnhancedLiveBetting
+            tournamentId={tournamentId}
+            userPoints={userPoints}
+          />
+
+          {/* Live Scoring Widget */}
+          {currentMatch && (
+            <LiveScoringWidget
+              matchId={currentMatch.id}
+              tournamentId={tournamentId}
+              player1={currentMatch.player1}
+              player2={currentMatch.player2}
+              status={
+                currentMatch.status as "pending" | "in_progress" | "completed"
+              }
+              compact={true}
+              onScoreUpdate={(player1Score, player2Score, winnerId) => {
+                // Update the current match scores
+                setCurrentMatch({
+                  ...currentMatch,
+                  player1: { ...currentMatch.player1, score: player1Score },
+                  player2: { ...currentMatch.player2, score: player2Score },
+                  status: winnerId ? "completed" : "in_progress",
+                });
+              }}
+            />
+          )}
         </div>
       </div>
 
-      {/* Live Betting Sidebar */}
-      <div className="space-y-6">
-        <LiveBettingInterface tournamentId={tournamentId} />
-
-        {/* Connection Status */}
+      {/* Bottom Section - Connection Status & Additional Info */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
         <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <Activity className="h-5 w-5" />
-              Connection Status
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
+          <CardContent className="p-4">
             <div className="flex items-center gap-2">
-              <div
-                className={`w-2 h-2 rounded-full ${
-                  isConnected ? "bg-green-500" : "bg-red-500"
-                }`}
-              />
-              <span className="text-sm">
-                {isConnected ? "Connected" : "Disconnected"}
-              </span>
+              <Activity className="h-4 w-4" />
+              <div>
+                <p className="text-sm text-muted-foreground">Connection</p>
+                <p className="text-sm font-medium">
+                  {isConnected ? "Connected" : "Disconnected"}
+                </p>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardContent className="p-4">
+            <div className="flex items-center gap-2">
+              <Target className="h-4 w-4" />
+              <div>
+                <p className="text-sm text-muted-foreground">Live Matches</p>
+                <p className="text-sm font-medium">{liveMatches.length}</p>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardContent className="p-4">
+            <div className="flex items-center gap-2">
+              <Crown className="h-4 w-4" />
+              <div>
+                <p className="text-sm text-muted-foreground">
+                  Tournament Status
+                </p>
+                <p className="text-sm font-medium capitalize">
+                  {stats.currentRound > 1 ? "In Progress" : "Starting"}
+                </p>
+              </div>
             </div>
           </CardContent>
         </Card>
