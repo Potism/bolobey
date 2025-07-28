@@ -11,7 +11,6 @@ interface OBSStreamPlayerProps {
   streamUrl?: string;
   streamKey?: string;
   tournamentId?: string;
-  isLive?: boolean;
   title?: string;
 }
 
@@ -19,7 +18,6 @@ export function OBSStreamPlayer({
   streamUrl,
   streamKey,
   tournamentId,
-  isLive = false,
   title = "Live Stream",
 }: OBSStreamPlayerProps) {
   const [currentStreamKey, setCurrentStreamKey] = useState<string | null>(
@@ -74,17 +72,12 @@ export function OBSStreamPlayer({
           <div className="flex items-center gap-2">
             <Play className="h-5 w-5" />
             {title}
-            {isLive && (
-              <Badge variant="destructive" className="animate-pulse">
-                LIVE
-              </Badge>
-            )}
           </div>
           <div className="flex items-center gap-2">
             {videoUrl && (
               <Badge variant="default" className="text-xs bg-green-600">
                 <Play className="h-3 w-3 mr-1" />
-                Live Stream
+                Ready
               </Badge>
             )}
             {streamKey && (
@@ -107,6 +100,8 @@ export function OBSStreamPlayer({
               allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
               allowFullScreen
               title="Live Stream"
+              loading="lazy"
+              referrerPolicy="no-referrer-when-downgrade"
             />
           ) : (
             <div className="w-full h-full flex items-center justify-center text-white">

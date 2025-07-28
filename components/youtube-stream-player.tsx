@@ -12,7 +12,6 @@ import { CheckCircle, Save, Play, Youtube, ExternalLink } from "lucide-react";
 
 interface YouTubeStreamPlayerProps {
   tournamentId?: string;
-  isLive?: boolean;
   title?: string;
   youtubeVideoId?: string;
   isAdmin?: boolean;
@@ -20,7 +19,6 @@ interface YouTubeStreamPlayerProps {
 
 export function YouTubeStreamPlayer({
   tournamentId,
-  isLive = false,
   title = "YouTube Live Stream",
   youtubeVideoId: initialYoutubeVideoId,
   isAdmin = false,
@@ -89,17 +87,12 @@ export function YouTubeStreamPlayer({
           <div className="flex items-center gap-2">
             <Youtube className="h-5 w-5 text-red-600" />
             {title}
-            {isLive && (
-              <Badge variant="destructive" className="animate-pulse">
-                LIVE
-              </Badge>
-            )}
           </div>
           <div className="flex items-center gap-2">
             {embedUrl && (
               <Badge variant="default" className="text-xs bg-green-600">
                 <Play className="h-3 w-3 mr-1" />
-                Live Stream
+                Ready
               </Badge>
             )}
           </div>
@@ -117,6 +110,8 @@ export function YouTubeStreamPlayer({
               allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
               allowFullScreen
               title="YouTube Live Stream"
+              loading="lazy"
+              referrerPolicy="no-referrer-when-downgrade"
             />
           ) : (
             <div className="w-full h-full flex items-center justify-center text-white">

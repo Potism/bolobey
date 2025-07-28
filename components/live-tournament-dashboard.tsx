@@ -319,7 +319,6 @@ export function LiveTournamentDashboard({
                       streamUrl={streamUrl!}
                       streamKey={streamKey}
                       tournamentId={tournamentId}
-                      isLive={true}
                       title="Live Stream"
                     />
                   )}
