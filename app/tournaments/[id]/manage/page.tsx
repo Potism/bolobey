@@ -36,6 +36,8 @@ import {
   Clock,
   Target,
   Video,
+  Monitor,
+  ExternalLink,
 } from "lucide-react";
 import { ThemeToggle } from "@/components/theme-toggle";
 
@@ -647,10 +649,51 @@ export default function TournamentManagePage() {
         {/* Streaming Tab */}
         {activeTab === "streaming" && (
           <div className="space-y-6">
+            {/* Streaming Control Link */}
+            <Card className="border-2 border-blue-200 bg-gradient-to-r from-blue-50 to-indigo-50 dark:from-blue-950/20 dark:to-indigo-950/20 dark:border-blue-800">
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2 text-lg text-blue-800 dark:text-blue-200">
+                  <Monitor className="h-5 w-5" />
+                  Streaming Overlay Control
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <p className="text-blue-700 dark:text-blue-300">
+                  Control your streaming overlay remotely. Update scores and
+                  manage the live stream without showing controls on screen.
+                </p>
+                <div className="flex gap-2">
+                  <Button
+                    onClick={() =>
+                      window.open(
+                        `/streaming-control/${tournamentId}`,
+                        "_blank"
+                      )
+                    }
+                    className="bg-blue-600 hover:bg-blue-700"
+                  >
+                    <Settings className="h-4 w-4 mr-2" />
+                    Open Control Panel
+                  </Button>
+                  <Button
+                    onClick={() =>
+                      window.open(
+                        `/streaming-overlay/${tournamentId}`,
+                        "_blank"
+                      )
+                    }
+                    variant="outline"
+                  >
+                    <ExternalLink className="h-4 w-4 mr-2" />
+                    Preview Overlay
+                  </Button>
+                </div>
+              </CardContent>
+            </Card>
+
             {/* YouTube Stream Player */}
             <YouTubeStreamPlayer
               tournamentId={tournamentId}
-              isLive={tournament.status === "in_progress"}
               title={`${tournament.name} - YouTube Live`}
               youtubeVideoId={(tournament as any).youtube_video_id}
               isAdmin={true}
@@ -661,7 +704,6 @@ export default function TournamentManagePage() {
               streamUrl={(tournament as any).stream_url}
               streamKey={(tournament as any).stream_key}
               tournamentId={tournamentId}
-              isLive={tournament.status === "in_progress"}
               title={`${tournament.name} - Other Platforms`}
             />
           </div>
