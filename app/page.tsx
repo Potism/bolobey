@@ -166,20 +166,20 @@ export default function HomePage() {
               </h1>
 
               {/* Subtitle */}
-              <p className="text-2xl md:text-3xl font-light text-muted-foreground mb-12 leading-relaxed">
+              <div className="text-2xl md:text-3xl font-light text-muted-foreground mb-12 leading-relaxed">
                 <AnimatedText delay={0.8} staggerDelay={0.03}>
                   Tournament management, reimagined
                 </AnimatedText>
-              </p>
+              </div>
 
               {/* Description */}
-              <p className="text-lg text-muted-foreground mb-12 max-w-2xl mx-auto leading-relaxed">
+              <div className="text-lg text-muted-foreground mb-12 max-w-2xl mx-auto leading-relaxed">
                 <AnimatedText delay={1.2} staggerDelay={0.02}>
                   Create, compete, and conquer in the ultimate Beyblade
                   tournament platform. Seamless brackets, real-time updates, and
                   professional management tools.
                 </AnimatedText>
-              </p>
+              </div>
 
               {/* CTA Buttons */}
               <div className="flex flex-col sm:flex-row gap-4 justify-center items-center">

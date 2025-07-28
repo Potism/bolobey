@@ -1,4 +1,4 @@
-import { io, Socket } from 'socket.io-client';
+// import { io, Socket } from 'socket.io-client';
 
 export interface MatchUpdate {
   matchId: string;
@@ -17,81 +17,43 @@ export interface TournamentUpdate {
 }
 
 class RealtimeService {
-  private socket: Socket | null = null;
+  // private socket: Socket | null = null;
   private listeners: Map<string, Set<(data: MatchUpdate | TournamentUpdate) => void>> = new Map();
 
   connect() {
-    if (this.socket?.connected) return;
-
-    this.socket = io(process.env.NEXT_PUBLIC_SOCKET_URL || 'http://localhost:3001', {
-      transports: ['websocket', 'polling'],
-      autoConnect: true,
-    });
-
-    this.socket.on('connect', () => {
-      console.log('Connected to real-time server');
-    });
-
-    this.socket.on('disconnect', () => {
-      console.log('Disconnected from real-time server');
-    });
-
-    this.socket.on('match_update', (data: MatchUpdate) => {
-      this.notifyListeners('match_update', data);
-    });
-
-    this.socket.on('tournament_update', (data: TournamentUpdate) => {
-      this.notifyListeners('tournament_update', data);
-    });
-
-    this.socket.on('error', (error) => {
-      console.error('Socket error:', error);
-    });
+    // Socket.IO connection disabled - using Supabase Realtime instead
+    console.log('Socket.IO connection disabled - using Supabase Realtime');
+    return;
   }
 
   disconnect() {
-    if (this.socket) {
-      this.socket.disconnect();
-      this.socket = null;
-    }
+    // Socket.IO disabled - using Supabase Realtime
+    return;
   }
 
-  joinTournament(tournamentId: string) {
-    if (this.socket?.connected) {
-      this.socket.emit('join_tournament', { tournamentId });
-    }
+  joinTournament(_tournamentId: string) {
+    // Socket.IO disabled - using Supabase Realtime
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    return;
   }
 
-  leaveTournament(tournamentId: string) {
-    if (this.socket?.connected) {
-      this.socket.emit('leave_tournament', { tournamentId });
-    }
+  leaveTournament(_tournamentId: string) {
+    // Socket.IO disabled - using Supabase Realtime
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    return;
   }
 
-  updateMatchScore(matchId: string, player1Score: number, player2Score: number, winnerId?: string) {
-    if (this.socket?.connected) {
-      this.socket.emit('update_match_score', {
-        matchId,
-        player1Score,
-        player2Score,
-        winnerId,
-        timestamp: new Date().toISOString(),
-      });
-    }
+  updateMatchScore(_matchId: string, _player1Score: number, _player2Score: number, _winnerId?: string) {
+    // Socket.IO disabled - using Supabase Realtime
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    return;
   }
 
-  subscribe(event: string, callback: (data: MatchUpdate | TournamentUpdate) => void) {
-    if (!this.listeners.has(event)) {
-      this.listeners.set(event, new Set());
-    }
-    this.listeners.get(event)!.add(callback);
-
-    return () => {
-      const eventListeners = this.listeners.get(event);
-      if (eventListeners) {
-        eventListeners.delete(callback);
-      }
-    };
+  subscribe(event: string, _callback: (data: MatchUpdate | TournamentUpdate) => void) {
+    // Socket.IO disabled - using Supabase Realtime
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    console.log(`Socket.IO subscription disabled for ${event} - using Supabase Realtime`);
+    return () => {};
   }
 
   private notifyListeners(event: string, data: MatchUpdate | TournamentUpdate) {
@@ -108,10 +70,11 @@ class RealtimeService {
   }
 
   isConnected() {
-    return this.socket?.connected || false;
+    // Socket.IO disabled - using Supabase Realtime
+    return false;
   }
 
-  sendChatMessage(data: {
+  sendChatMessage(_data: {
     tournamentId: string;
     userId: string;
     username: string;
@@ -119,9 +82,9 @@ class RealtimeService {
     message: string;
     timestamp: string;
   }) {
-    if (this.socket?.connected) {
-      this.socket.emit('chat_message', data);
-    }
+    // Socket.IO disabled - using Supabase Realtime
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    return;
   }
 }
 
