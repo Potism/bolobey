@@ -1,7 +1,7 @@
 "use client";
 
 import { Navigation } from "@/components/navigation";
-import { PrizesCatalog } from "@/components/prizes-catalog";
+import PrizesCatalog from "@/components/prizes-catalog";
 import { ThemeToggle } from "@/components/theme-toggle";
 
 export default function PrizesPage() {

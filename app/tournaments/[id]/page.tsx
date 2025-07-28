@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useMemo } from "react";
 import { useParams } from "next/navigation";
 import { motion } from "framer-motion";
 import { Navigation } from "@/components/navigation";
@@ -25,9 +25,21 @@ import {
 } from "lucide-react";
 import { supabase } from "@/lib/supabase";
 import { useSpectatorTracking } from "@/lib/hooks/useSpectatorTracking";
-import { useOptimizedFetch } from "@/lib/hooks/useOptimizedFetch";
+
 import ErrorBoundary from "@/lib/utils/error-boundary";
 import Link from "next/link";
+
+interface TournamentType {
+  id: number;
+  name: string;
+  description: string;
+  category: "real" | "stream_only";
+  entry_fee_eur: number;
+  has_physical_prizes: boolean;
+  has_stream_points_prizes: boolean;
+  max_participants: number;
+  features: string[];
+}
 
 interface Tournament {
   id: string;
@@ -43,6 +55,10 @@ interface Tournament {
   winner_id?: string;
   created_at: string;
   updated_at: string;
+  tournament_type_id?: number;
+  stream_url?: string;
+  stream_key?: string;
+  youtube_video_id?: string;
 }
 
 interface Match {
@@ -69,6 +85,59 @@ interface Participant {
   created_at: string;
 }
 
+interface FormattedMatch {
+  id: string;
+  round: number;
+  matchNumber: number;
+  player1: {
+    id: string;
+    name: string;
+    score: number;
+    avatar?: string;
+  };
+  player2: {
+    id: string;
+    name: string;
+    score: number;
+    avatar?: string;
+  };
+  status: "pending" | "in_progress" | "completed";
+  winner?: {
+    id: string;
+    name: string;
+  };
+  startTime?: Date;
+  endTime?: Date;
+}
+
+interface ParticipantData {
+  id: string;
+  user_id: string;
+  tournament_id: string;
+  username: string;
+  avatar_url?: string;
+  created_at: string;
+  users?: {
+    display_name: string;
+    avatar_url?: string;
+  };
+}
+
+interface MatchData {
+  id: string;
+  tournament_id: string;
+  player1_id: string;
+  player2_id: string;
+  player1_score: number;
+  player2_score: number;
+  status: string;
+  round: number;
+  match_number: number;
+  winner_id?: string;
+  start_time?: string;
+  end_time?: string;
+}
+
 export default function TournamentPage() {
   const params = useParams();
   const tournamentId = params.id as string;
@@ -80,9 +149,17 @@ export default function TournamentPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState("dashboard");
-  const [selectedMatch, setSelectedMatch] = useState<Match | null>(null);
-  const [currentUser, setCurrentUser] = useState<any>(null);
+  const [selectedMatch, setSelectedMatch] = useState<FormattedMatch | null>(
+    null
+  );
+  const [currentUser, setCurrentUser] = useState<{
+    id: string;
+    user_metadata?: { full_name?: string; avatar_url?: string };
+  } | null>(null);
   const [joining, setJoining] = useState(false);
+  const [tournamentType, setTournamentType] = useState<TournamentType | null>(
+    null
+  );
 
   // Initialize spectator tracking
   const { spectatorCount } = useSpectatorTracking(tournamentId);
@@ -94,86 +171,134 @@ export default function TournamentPage() {
     setCurrentUser(user);
   }, []);
 
+  const fetchTournamentType = useCallback(async (typeId: number) => {
+    try {
+      const { data, error } = await supabaseClient
+        .from("tournament_types")
+        .select("*")
+        .eq("id", typeId)
+        .single();
+
+      if (error) {
+        console.error("Error fetching tournament type:", error);
+        return;
+      }
+
+      setTournamentType(data);
+    } catch (error) {
+      console.error("Error fetching tournament type:", error);
+    }
+  }, []);
+
   // Debug spectator tracking
   useEffect(() => {
-    console.log("🎯 Tournament page - spectator count:", spectatorCount);
-    console.log("🎯 Tournament page - tournament ID:", tournamentId);
+    // Spectator tracking is active but no console logs needed
   }, [spectatorCount, tournamentId]);
 
   useEffect(() => {
     fetchCurrentUser();
   }, [fetchCurrentUser]);
 
-  // Optimized tournament data fetching with caching and error handling
-  const {
-    data: tournamentData,
-    loading: dataLoading,
-    error: dataError,
-    refetch,
-  } = useOptimizedFetch({
-    key: `tournament-${tournamentId}`,
-    fetcher: async () => {
-      // Fetch all data in parallel for better performance
-      const [tournamentResult, participantsResult, matchesResult] =
-        await Promise.all([
-          supabaseClient
-            .from("tournaments")
-            .select("*")
-            .eq("id", tournamentId)
-            .single(),
-          supabaseClient
-            .from("tournament_participants")
-            .select(
-              `
+  // Simple tournament data fetching without complex retry logic
+  const [tournamentData, setTournamentData] = useState<{
+    tournament: Tournament | null;
+    participants: Participant[];
+    matches: Match[];
+  } | null>(null);
+  const [dataLoading, setDataLoading] = useState(true);
+  const [dataError, setDataError] = useState<Error | null>(null);
+
+  const fetchTournamentData = useCallback(async () => {
+    if (!tournamentId) return;
+
+    setDataLoading(true);
+    setDataError(null);
+
+    try {
+      // Fetch tournament data first (most critical)
+      const tournamentResult = await supabaseClient
+        .from("tournaments")
+        .select("*")
+        .eq("id", tournamentId)
+        .single();
+
+      if (tournamentResult.error) {
+        console.error("Tournament fetch error:", tournamentResult.error);
+        throw new Error(
+          `Tournament not found: ${tournamentResult.error.message}`
+        );
+      }
+
+      // Fetch participants and matches in parallel (less critical)
+      const [participantsResult, matchesResult] = await Promise.allSettled([
+        supabaseClient
+          .from("tournament_participants")
+          .select(
+            `
             *,
             users:user_id(display_name, avatar_url)
           `
-            )
-            .eq("tournament_id", tournamentId),
-          supabaseClient
-            .from("matches")
-            .select("*")
-            .eq("tournament_id", tournamentId)
-            .order("round", { ascending: true })
-            .order("match_number", { ascending: true }),
-        ]);
+          )
+          .eq("tournament_id", tournamentId),
+        supabaseClient
+          .from("matches")
+          .select("*")
+          .eq("tournament_id", tournamentId)
+          .order("round", { ascending: true })
+          .order("match_number", { ascending: true }),
+      ]);
 
-      // Handle errors
-      if (tournamentResult.error) throw tournamentResult.error;
-      if (participantsResult.error) {
-        console.warn(
-          "No participants found for tournament:",
-          participantsResult.error
+      // Handle participants result
+      let formattedParticipants: ParticipantData[] = [];
+      if (
+        participantsResult.status === "fulfilled" &&
+        !participantsResult.value.error
+      ) {
+        formattedParticipants = (participantsResult.value.data || []).map(
+          (p: ParticipantData) => ({
+            id: p.id,
+            user_id: p.user_id,
+            tournament_id: p.tournament_id,
+            username: p.users?.display_name || "Unknown Player",
+            avatar_url: p.users?.avatar_url,
+            created_at: p.created_at,
+          })
         );
-      }
-      if (matchesResult.error) {
-        console.warn("No matches found for tournament:", matchesResult.error);
+      } else {
+        console.warn("Participants fetch failed:", participantsResult);
       }
 
-      // Format participants data
-      const formattedParticipants = (participantsResult.data || []).map(
-        (p: any) => ({
-          id: p.id,
-          user_id: p.user_id,
-          tournament_id: p.tournament_id,
-          username: p.users?.display_name || "Unknown Player",
-          avatar_url: p.users?.avatar_url,
-          created_at: p.created_at,
-        })
-      );
+      // Handle matches result
+      let matches: MatchData[] = [];
+      if (matchesResult.status === "fulfilled" && !matchesResult.value.error) {
+        matches = matchesResult.value.data || [];
+      } else {
+        console.warn("Matches fetch failed:", matchesResult);
+      }
 
-      return {
+      const data = {
         tournament: tournamentResult.data,
         participants: formattedParticipants,
-        matches: matchesResult.data || [],
+        matches: matches,
       };
-    },
-    retryOptions: { maxRetries: 3, delay: 1000, backoff: true },
-    onError: (error) => {
-      console.error("Tournament data fetch failed:", error);
-      setError("Failed to load tournament data");
-    },
-  });
+
+      setTournamentData(data);
+    } catch (error) {
+      console.error("Tournament data fetch error:", error);
+      setDataError(error as Error);
+    } finally {
+      setDataLoading(false);
+    }
+  }, [tournamentId, supabaseClient]);
+
+  // Fetch data on mount and when tournamentId changes
+  useEffect(() => {
+    fetchTournamentData();
+  }, [fetchTournamentData]);
+
+  const refetch = useCallback(() => {
+    fetchTournamentData();
+  }, [fetchTournamentData]);
 
   // Update state when optimized data is available
   useEffect(() => {
@@ -181,9 +306,15 @@ export default function TournamentPage() {
       setTournament(tournamentData.tournament);
       setParticipants(tournamentData.participants);
       setMatches(tournamentData.matches);
+
+      // Fetch tournament type if available
+      if (tournamentData.tournament?.tournament_type_id) {
+        fetchTournamentType(tournamentData.tournament.tournament_type_id);
+      }
+
       setLoading(false);
     }
-  }, [tournamentData]);
+  }, [tournamentData, fetchTournamentType]);
 
   // Update loading state
   useEffect(() => {
@@ -197,7 +328,8 @@ export default function TournamentPage() {
     }
   }, [dataError]);
 
-  const formatMatchesForComponents = (): any[] => {
+  // Optimized match formatting with useMemo
+  const formattedMatches = useMemo((): FormattedMatch[] => {
     return matches.map((match) => {
       const player1 = participants.find((p) => p.user_id === match.player1_id);
       const player2 = participants.find((p) => p.user_id === match.player2_id);
@@ -246,45 +378,48 @@ export default function TournamentPage() {
         endTime: match.end_time ? new Date(match.end_time) : undefined,
       };
     });
-  };
+  }, [matches, participants]);
 
-  const handleMatchClick = (match: any) => {
-    const foundMatch = matches.find((m) => m.id === match.id);
-    if (foundMatch) {
-      setSelectedMatch(foundMatch);
-      setActiveTab("scoring");
-    }
-  };
+  // Optimized event handlers with useCallback
+  const handleMatchClick = useCallback(
+    (match: { id: string }) => {
+      const foundMatch = formattedMatches.find((m) => m.id === match.id);
+      if (foundMatch) {
+        setSelectedMatch(foundMatch);
+        setActiveTab("scoring");
+      }
+    },
+    [formattedMatches]
+  );
 
-  const handleScoreUpdate = async (
-    player1Score: number,
-    player2Score: number,
-    winnerId?: string
-  ) => {
-    if (!selectedMatch) return;
+  const handleScoreUpdate = useCallback(
+    async (player1Score: number, player2Score: number, winnerId?: string) => {
+      if (!selectedMatch) return;
 
-    try {
-      const { error } = await supabaseClient
-        .from("matches")
-        .update({
-          player1_score: player1Score,
-          player2_score: player2Score,
-          winner_id: winnerId,
-          status: winnerId ? "completed" : "in_progress",
-          end_time: winnerId ? new Date().toISOString() : null,
-        })
-        .eq("id", selectedMatch.id);
+      try {
+        const { error } = await supabaseClient
+          .from("matches")
+          .update({
+            player1_score: player1Score,
+            player2_score: player2Score,
+            winner_id: winnerId,
+            status: winnerId ? "completed" : "in_progress",
+            end_time: winnerId ? new Date().toISOString() : null,
+          })
+          .eq("id", selectedMatch.id);
 
-      if (error) throw error;
+        if (error) throw error;
 
-      // Refresh data
-      await refetch();
-    } catch (err) {
-      console.error("Error updating match score:", err);
-    }
-  };
+        // Refresh data
+        await refetch();
+      } catch (err) {
+        console.error("Error updating match score:", err);
+      }
+    },
+    [selectedMatch, supabaseClient, refetch]
+  );
 
-  const handleJoinTournament = async () => {
+  const handleJoinTournament = useCallback(async () => {
     if (!currentUser || !tournament) {
       console.error("Missing currentUser or tournament:", {
         currentUser,
@@ -297,63 +432,18 @@ export default function TournamentPage() {
     setJoining(true);
     try {
       console.log("Attempting to join tournament:", {
-        tournamentId,
         userId: currentUser.id,
-        currentParticipants: participants.length,
-        maxParticipants: tournament.max_participants,
-        registrationDeadline: tournament.registration_deadline,
+        tournamentId: tournament.id,
       });
-
-      // Check if tournament is full
-      if (participants.length >= tournament.max_participants) {
-        throw new Error("Tournament is full");
-      }
-
-      // Check if registration deadline has passed
-      const now = new Date();
-      const deadline = new Date(tournament.registration_deadline);
-      if (now > deadline) {
-        throw new Error("Registration deadline has passed");
-      }
-
-      // Check if user is already a participant
-      if (isParticipant) {
-        throw new Error("You are already registered for this tournament");
-      }
-
-      // Verify user exists in users table
-      const { data: userData, error: userError } = await supabaseClient
-        .from("users")
-        .select("id")
-        .eq("id", currentUser.id)
-        .single();
-
-      if (userError || !userData) {
-        console.error("User not found in users table:", userError);
-        throw new Error(
-          "User profile not found. Please complete your profile first."
-        );
-      }
-
-      // Check authentication status
-      const {
-        data: { session },
-        error: sessionError,
-      } = await supabaseClient.auth.getSession();
-      if (sessionError || !session) {
-        console.error("No active session:", sessionError);
-        throw new Error("Please log in to join tournaments");
-      }
-
-      console.log("User authenticated, attempting to join...");
 
       const { data, error } = await supabaseClient
         .from("tournament_participants")
         .insert({
-          tournament_id: tournamentId,
           user_id: currentUser.id,
+          tournament_id: tournament.id,
         })
-        .select();
+        .select()
+        .single();
 
       if (error) {
         console.error("Supabase error:", error);
@@ -379,7 +469,18 @@ export default function TournamentPage() {
     } finally {
       setJoining(false);
     }
-  };
+  }, [currentUser, tournament, supabaseClient, refetch]);
+
+  // Optimized computed values with useMemo
+  const isParticipant = useMemo(
+    () => participants.some((p) => p.user_id === currentUser?.id),
+    [participants, currentUser?.id]
+  );
+
+  const isCreator = useMemo(
+    () => tournament?.created_by === currentUser?.id,
+    [tournament?.created_by, currentUser?.id]
+  );
 
   if (loading) {
     return (
@@ -390,6 +491,16 @@ export default function TournamentPage() {
             <div className="text-center">
               <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary mx-auto mb-4"></div>
               <p className="text-muted-foreground">Loading tournament...</p>
+              {dataError && (
+                <div className="mt-4">
+                  <p className="text-sm text-red-500 mb-2">
+                    Loading failed. Please try again.
+                  </p>
+                  <Button onClick={() => refetch()} variant="outline" size="sm">
+                    Retry
+                  </Button>
+                </div>
+              )}
             </div>
           </div>
         </div>
@@ -417,16 +528,6 @@ export default function TournamentPage() {
       </div>
     );
   }
-
-  const formattedMatches = formatMatchesForComponents();
-  console.log("Tournament page - raw matches:", matches);
-  console.log("Tournament page - formatted matches:", formattedMatches);
-  console.log(
-    "Tournament page - matches with in_progress status:",
-    matches.filter((m) => m.status === "in_progress")
-  );
-  const isParticipant = participants.some((p) => p.user_id === currentUser?.id);
-  const isCreator = tournament.created_by === currentUser?.id;
 
   return (
     <ErrorBoundary>
@@ -642,9 +743,10 @@ export default function TournamentPage() {
                   spectators: spectatorCount.active_spectators, // Real-time spectator count
                 }}
                 spectatorCount={spectatorCount}
-                streamUrl={(tournament as any).stream_url}
-                streamKey={(tournament as any).stream_key}
-                youtubeVideoId={(tournament as any).youtube_video_id}
+                tournamentType={tournamentType || undefined}
+                streamUrl={tournament?.stream_url}
+                streamKey={tournament?.stream_key}
+                youtubeVideoId={tournament?.youtube_video_id}
                 onMatchClick={(matchId) => {
                   const match = formattedMatches.find((m) => m.id === matchId);
                   if (match) {
@@ -690,11 +792,11 @@ export default function TournamentPage() {
                     tournamentId={tournamentId}
                     player1={
                       formattedMatches.find((m) => m.id === selectedMatch.id)
-                        ?.player1!
+                        ?.player1 || selectedMatch.player1
                     }
                     player2={
                       formattedMatches.find((m) => m.id === selectedMatch.id)
-                        ?.player2!
+                        ?.player2 || selectedMatch.player2
                     }
                     status={
                       selectedMatch.status as

@@ -12,7 +12,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { TournamentChat } from "@/components/tournament-chat";
-import { AdminBettingControls } from "@/components/admin-betting-controls";
+import { AdminBettingControlsV3Simple } from "@/components/admin-betting-controls-v3-simple";
 import { OBSStreamPlayer } from "@/components/obs-stream-player";
 import { YouTubeStreamPlayer } from "@/components/youtube-stream-player";
 import {
@@ -425,7 +425,7 @@ export default function TournamentManagePage() {
             }`}
           >
             <Target className="h-4 w-4 inline mr-2" />
-            Live Betting (V2.5)
+            Live Betting V3
           </button>
           <button
             onClick={() => setActiveTab("streaming")}
@@ -640,7 +640,7 @@ export default function TournamentManagePage() {
         {/* Betting Tab */}
         {activeTab === "betting" && (
           <div className="space-y-6">
-            <AdminBettingControls tournamentId={tournament.id} />
+            <AdminBettingControlsV3Simple tournamentId={tournament.id} />
           </div>
         )}
 

@@ -1,0 +1,618 @@
+"use client";
+
+import { useState, useEffect, useCallback } from "react";
+import { Card, CardContent, CardHeader, CardTitle } from "./ui/card";
+import { Button } from "./ui/button";
+import { Badge } from "./ui/badge";
+import { Input } from "./ui/input";
+import { Label } from "./ui/label";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "./ui/select";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "./ui/dialog";
+import { Alert, AlertDescription } from "./ui/alert";
+import {
+  Trophy,
+  ShoppingCart,
+  Award,
+  Target,
+  Filter,
+  Package,
+  Clock,
+  CheckCircle,
+  XCircle,
+} from "lucide-react";
+import { supabase } from "@/lib/supabase";
+import { useAuth } from "@/lib/hooks/useAuth";
+
+interface Prize {
+  id: string;
+  name: string;
+  description: string;
+  points_cost: number;
+  category: string;
+  image_url?: string;
+  stock_quantity: number;
+  is_featured: boolean;
+  is_active: boolean;
+}
+
+interface UserRedemption {
+  id: string;
+  prize_id: string;
+  points_spent: number;
+  status: string;
+  created_at: string;
+  prize: {
+    name: string;
+    category: string;
+  };
+}
+
+export default function PrizesCatalog() {
+  const { user } = useAuth();
+  const [prizes, setPrizes] = useState<Prize[]>([]);
+  const [userStreamPoints, setUserStreamPoints] = useState(0);
+  const [userRedemptions, setUserRedemptions] = useState<UserRedemption[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [redeeming, setRedeeming] = useState(false);
+  const [selectedPrize, setSelectedPrize] = useState<Prize | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [success, setSuccess] = useState<string | null>(null);
+
+  // Filter states
+  const [searchTerm, setSearchTerm] = useState("");
+  const [selectedCategory, setSelectedCategory] = useState<string>("all");
+  const [sortBy, setSortBy] = useState<string>("featured");
+
+  const fetchPrizes = useCallback(async () => {
+    try {
+      const { data, error: fetchError } = await supabase
+        .from("prizes")
+        .select("*")
+        .eq("is_active", true)
+        .order("is_featured", { ascending: false })
+        .order("points_cost", { ascending: true });
+
+      if (fetchError) {
+        console.error("Error fetching prizes:", fetchError);
+        return;
+      }
+
+      setPrizes(data || []);
+    } catch (fetchError) {
+      console.error("Error fetching prizes:", fetchError);
+    }
+  }, []);
+
+  const fetchUserStreamPoints = useCallback(async () => {
+    if (!user) return;
+    try {
+      const { data, error: fetchError } = await supabase
+        .from("user_points")
+        .select("stream_points")
+        .eq("user_id", user.id)
+        .single();
+      if (fetchError) {
+        console.error("Error fetching user stream points:", fetchError);
+        return;
+      }
+      setUserStreamPoints(data?.stream_points || 0);
+    } catch (fetchError) {
+      console.error("Error fetching user stream points:", fetchError);
+    }
+  }, [user]);
+
+  const fetchUserRedemptions = useCallback(async () => {
+    if (!user) return;
+    try {
+      // Use the safe function to avoid RLS permission issues
+      const { data, error: fetchError } = await supabase.rpc(
+        "get_user_redemptions_safe",
+        { user_uuid: user.id }
+      );
+
+      if (fetchError) {
+        console.error("Error fetching user redemptions:", fetchError);
+        // Fallback to direct query if function doesn't exist
+        const { data: fallbackData, error: fallbackError } = await supabase
+          .from("prize_redemptions")
+          .select(
+            `
+            id,
+            prize_id,
+            points_spent,
+            status,
+            created_at,
+            prize:prizes(name, category)
+          `
+          )
+          .eq("user_id", user.id)
+          .order("created_at", { ascending: false });
+
+        if (fallbackError) {
+          console.error("Error with fallback query:", fallbackError);
+          return;
+        }
+
+        setUserRedemptions((fallbackData as unknown as UserRedemption[]) || []);
+        return;
+      }
+
+      // Transform the function result to match our interface
+      const transformedData =
+        data?.map(
+          (item: {
+            redemption_id: string;
+            prize_name: string;
+            prize_category: string;
+            points_spent: number;
+            status: string;
+            created_at: string;
+          }) => ({
+            id: item.redemption_id,
+            prize_id: "", // Not needed for display
+            points_spent: item.points_spent,
+            status: item.status,
+            created_at: item.created_at,
+            prize: {
+              name: item.prize_name,
+              category: item.prize_category,
+            },
+          })
+        ) || [];
+
+      setUserRedemptions(transformedData);
+    } catch (fetchError) {
+      console.error("Error fetching user redemptions:", fetchError);
+    }
+  }, [user]);
+
+  const redeemPrize = useCallback(async () => {
+    if (!user || !selectedPrize) return;
+    setRedeeming(true);
+    setError(null);
+    setSuccess(null);
+
+    try {
+      // Check if user has enough stream points
+      if (userStreamPoints < selectedPrize.points_cost) {
+        setError("Insufficient stream points");
+        return;
+      }
+
+      // Check if prize is still in stock
+      if (selectedPrize.stock_quantity <= 0) {
+        setError("Prize is out of stock");
+        return;
+      }
+
+      // Use the new dual-point system function
+      const { data, error: redemptionError } = await supabase.rpc(
+        "redeem_prize_dual_points",
+        {
+          prize_uuid: selectedPrize.id,
+          user_uuid: user.id,
+        }
+      );
+
+      if (redemptionError) {
+        console.error("Error redeeming prize:", redemptionError);
+        setError(redemptionError.message || "Failed to redeem prize");
+        return;
+      }
+
+      if (data && data.success) {
+        setSuccess(data.message || "Prize redeemed successfully!");
+        setSelectedPrize(null);
+
+        // Refresh data
+        await Promise.all([
+          fetchPrizes(),
+          fetchUserStreamPoints(),
+          fetchUserRedemptions(),
+        ]);
+
+        // Clear success message after 3 seconds
+        setTimeout(() => setSuccess(null), 3000);
+      } else {
+        setError(data?.message || "Failed to redeem prize");
+      }
+    } catch (error) {
+      console.error("Error redeeming prize:", error);
+      setError("Failed to redeem prize");
+    } finally {
+      setRedeeming(false);
+    }
+  }, [
+    user,
+    selectedPrize,
+    userStreamPoints,
+    fetchPrizes,
+    fetchUserStreamPoints,
+    fetchUserRedemptions,
+  ]);
+
+  useEffect(() => {
+    Promise.all([
+      fetchPrizes(),
+      fetchUserStreamPoints(),
+      fetchUserRedemptions(),
+    ]).finally(() => setLoading(false));
+  }, [fetchPrizes, fetchUserStreamPoints, fetchUserRedemptions]);
+
+  // Filter and sort prizes
+  const filteredPrizes = prizes
+    .filter((prize) => {
+      const matchesSearch =
+        prize.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        prize.description.toLowerCase().includes(searchTerm.toLowerCase());
+      const matchesCategory =
+        selectedCategory === "all" || prize.category === selectedCategory;
+      return matchesSearch && matchesCategory;
+    })
+    .sort((a, b) => {
+      switch (sortBy) {
+        case "featured":
+          return b.is_featured ? 1 : -1;
+        case "points-low":
+          return a.points_cost - b.points_cost;
+        case "points-high":
+          return b.points_cost - a.points_cost;
+        case "name":
+          return a.name.localeCompare(b.name);
+        default:
+          return 0;
+      }
+    });
+
+  const getStatusColor = (status: string) => {
+    switch (status) {
+      case "pending":
+        return "bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200";
+      case "approved":
+        return "bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200";
+      case "shipped":
+        return "bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200";
+      case "delivered":
+        return "bg-purple-100 text-purple-800 dark:bg-purple-900 dark:text-purple-200";
+      case "cancelled":
+        return "bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200";
+      default:
+        return "bg-gray-100 text-gray-800 dark:bg-gray-900 dark:text-gray-200";
+    }
+  };
+
+  const getStatusIcon = (status: string) => {
+    switch (status) {
+      case "pending":
+        return <Clock className="h-4 w-4" />;
+      case "approved":
+        return <CheckCircle className="h-4 w-4" />;
+      case "shipped":
+        return <Package className="h-4 w-4" />;
+      case "delivered":
+        return <Trophy className="h-4 w-4" />;
+      case "cancelled":
+        return <XCircle className="h-4 w-4" />;
+      default:
+        return <Clock className="h-4 w-4" />;
+    }
+  };
+
+  if (loading) {
+    return (
+      <div className="container mx-auto px-4 py-8">
+        <div className="flex items-center justify-center min-h-[400px]">
+          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
+          <span className="ml-2">Loading prizes...</span>
+        </div>
+      </div>
+    );
+  }
+
+  // Debug section - remove this after fixing
+  console.log("Prizes Catalog Debug:", {
+    prizesCount: prizes.length,
+    userStreamPoints,
+    userRedemptionsCount: userRedemptions.length,
+    filteredPrizesCount: filteredPrizes.length,
+    user: user?.id,
+  });
+
+  return (
+    <div className="container mx-auto px-4 py-8">
+      {/* Header */}
+      <div className="mb-8">
+        <h1 className="text-3xl font-bold text-gray-900 dark:text-white mb-2">
+          🏆 Prizes Catalog
+        </h1>
+        <p className="text-gray-600 dark:text-gray-400">
+          Redeem your stream points for amazing prizes!
+        </p>
+      </div>
+
+      {/* User Points Display */}
+      <Card className="mb-6">
+        <CardContent className="pt-6">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-4">
+              <div className="flex items-center gap-2">
+                <Award className="h-5 w-5 text-yellow-500" />
+                <span className="font-semibold">Your Stream Points:</span>
+                <span className="text-2xl font-bold text-yellow-600">
+                  {userStreamPoints.toLocaleString()}
+                </span>
+              </div>
+            </div>
+            <div className="text-sm text-muted-foreground">
+              {userRedemptions.length} redemptions made
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Success/Error Messages */}
+      {success && (
+        <Alert className="mb-6">
+          <CheckCircle className="h-4 w-4" />
+          <AlertDescription>{success}</AlertDescription>
+        </Alert>
+      )}
+
+      {error && (
+        <Alert variant="destructive" className="mb-6">
+          <XCircle className="h-4 w-4" />
+          <AlertDescription>{error}</AlertDescription>
+        </Alert>
+      )}
+
+      {/* Filters */}
+      <Card className="mb-6">
+        <CardContent className="pt-6">
+          <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+            <div>
+              <Label htmlFor="search">Search Prizes</Label>
+              <Input
+                id="search"
+                placeholder="Search prizes..."
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+              />
+            </div>
+            <div>
+              <Label htmlFor="category">Category</Label>
+              <Select
+                value={selectedCategory}
+                onValueChange={setSelectedCategory}
+              >
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All Categories</SelectItem>
+                  <SelectItem value="gaming">Gaming</SelectItem>
+                  <SelectItem value="electronics">Electronics</SelectItem>
+                  <SelectItem value="clothing">Clothing</SelectItem>
+                  <SelectItem value="accessories">Accessories</SelectItem>
+                  <SelectItem value="collectibles">Collectibles</SelectItem>
+                  <SelectItem value="other">Other</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div>
+              <Label htmlFor="sort">Sort By</Label>
+              <Select value={sortBy} onValueChange={setSortBy}>
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="featured">Featured First</SelectItem>
+                  <SelectItem value="points-low">
+                    Points: Low to High
+                  </SelectItem>
+                  <SelectItem value="points-high">
+                    Points: High to Low
+                  </SelectItem>
+                  <SelectItem value="name">Name A-Z</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="flex items-end">
+              <Button
+                variant="outline"
+                onClick={() => {
+                  setSearchTerm("");
+                  setSelectedCategory("all");
+                  setSortBy("featured");
+                }}
+                className="w-full"
+              >
+                <Filter className="h-4 w-4 mr-2" />
+                Clear Filters
+              </Button>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Prizes Grid */}
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6 mb-8">
+        {filteredPrizes.map((prize) => (
+          <Card key={prize.id} className="overflow-hidden">
+            <CardHeader className="pb-3">
+              <div className="flex justify-between items-start">
+                <CardTitle className="text-lg">{prize.name}</CardTitle>
+                {prize.is_featured && (
+                  <Badge variant="secondary" className="text-xs">
+                    <Target className="h-3 w-3 mr-1" />
+                    Featured
+                  </Badge>
+                )}
+              </div>
+              <p className="text-sm text-muted-foreground line-clamp-2">
+                {prize.description}
+              </p>
+            </CardHeader>
+            <CardContent>
+              <div className="space-y-3">
+                <div className="flex justify-between items-center">
+                  <span className="text-sm text-muted-foreground">Cost:</span>
+                  <span className="font-semibold text-yellow-600">
+                    {prize.points_cost.toLocaleString()} stream points
+                  </span>
+                </div>
+                <div className="flex justify-between items-center">
+                  <span className="text-sm text-muted-foreground">Stock:</span>
+                  <span
+                    className={`font-medium ${
+                      prize.stock_quantity <= 5
+                        ? "text-red-600"
+                        : "text-green-600"
+                    }`}
+                  >
+                    {prize.stock_quantity} available
+                  </span>
+                </div>
+                <div className="flex justify-between items-center">
+                  <span className="text-sm text-muted-foreground">
+                    Category:
+                  </span>
+                  <Badge variant="outline" className="text-xs">
+                    {prize.category}
+                  </Badge>
+                </div>
+                <Button
+                  className="w-full"
+                  disabled={
+                    userStreamPoints < prize.points_cost ||
+                    prize.stock_quantity <= 0
+                  }
+                  onClick={() => setSelectedPrize(prize)}
+                >
+                  <ShoppingCart className="h-4 w-4 mr-2" />
+                  {userStreamPoints < prize.points_cost
+                    ? "Not Enough Points"
+                    : prize.stock_quantity <= 0
+                    ? "Out of Stock"
+                    : "Redeem Prize"}
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
+        ))}
+      </div>
+
+      {/* User Redemptions */}
+      {userRedemptions.length > 0 && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <Package className="h-5 w-5" />
+              Your Redemptions
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="space-y-3">
+              {userRedemptions.map((redemption) => (
+                <div
+                  key={redemption.id}
+                  className="flex items-center justify-between p-3 border rounded-lg"
+                >
+                  <div>
+                    <p className="font-medium">{redemption.prize.name}</p>
+                    <p className="text-sm text-muted-foreground">
+                      {redemption.points_spent} stream points •{" "}
+                      {new Date(redemption.created_at).toLocaleDateString()}
+                    </p>
+                  </div>
+                  <Badge
+                    className={`${getStatusColor(
+                      redemption.status
+                    )} flex items-center gap-1`}
+                  >
+                    {getStatusIcon(redemption.status)}
+                    {redemption.status}
+                  </Badge>
+                </div>
+              ))}
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Redemption Confirmation Dialog */}
+      <Dialog
+        open={!!selectedPrize}
+        onOpenChange={() => setSelectedPrize(null)}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Confirm Redemption</DialogTitle>
+          </DialogHeader>
+          {selectedPrize && (
+            <div className="space-y-4">
+              <div>
+                <h3 className="font-semibold">{selectedPrize.name}</h3>
+                <p className="text-sm text-muted-foreground">
+                  {selectedPrize.description}
+                </p>
+              </div>
+              <div className="space-y-2">
+                <div className="flex justify-between">
+                  <span>Cost:</span>
+                  <span className="font-semibold text-yellow-600">
+                    {selectedPrize.points_cost} stream points
+                  </span>
+                </div>
+                <div className="flex justify-between">
+                  <span>Your Balance:</span>
+                  <span className="font-semibold">
+                    {userStreamPoints} stream points
+                  </span>
+                </div>
+                <div className="flex justify-between">
+                  <span>Remaining After:</span>
+                  <span className="font-semibold">
+                    {userStreamPoints - selectedPrize.points_cost} stream points
+                  </span>
+                </div>
+              </div>
+              <div className="flex gap-2">
+                <Button
+                  onClick={redeemPrize}
+                  disabled={redeeming}
+                  className="flex-1"
+                >
+                  {redeeming ? (
+                    <>
+                      <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
+                      Processing...
+                    </>
+                  ) : (
+                    <>
+                      <ShoppingCart className="h-4 w-4 mr-2" />
+                      Confirm Redemption
+                    </>
+                  )}
+                </Button>
+                <Button
+                  variant="outline"
+                  onClick={() => setSelectedPrize(null)}
+                  disabled={redeeming}
+                  className="flex-1"
+                >
+                  Cancel
+                </Button>
+              </div>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
+    </div>
+  );
+}

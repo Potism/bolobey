@@ -20,6 +20,8 @@ import {
 import { supabase } from "@/lib/supabase";
 import { useAuth } from "@/lib/hooks/useAuth";
 import { useOptimizedFetch } from "@/lib/hooks/useOptimizedFetch";
+import { useDualPoints } from "@/lib/hooks/useDualPoints";
+import { EnhancedPointPurchaseModal } from "@/components/enhanced-point-purchase-modal";
 
 interface BettingMatch {
   id: string;
@@ -65,14 +67,23 @@ interface BettingStats {
 
 interface EnhancedLiveBettingProps {
   tournamentId: string;
-  userPoints?: number;
+  match?: {
+    id: string;
+    player1: { id: string; name: string; score: number; avatar?: string };
+    player2: { id: string; name: string; score: number; avatar?: string };
+    status: string;
+    round: number;
+    matchNumber: number;
+  }; // Optional match prop for compatibility
 }
 
 export function EnhancedLiveBetting({
   tournamentId,
-  userPoints = 0,
+  match, // eslint-disable-line @typescript-eslint/no-unused-vars
 }: EnhancedLiveBettingProps) {
   const { user } = useAuth();
+  const { userPoints: userPointData } = useDualPoints();
+  const [showPurchaseModal, setShowPurchaseModal] = useState(false);
   const [currentMatch, setCurrentMatch] = useState<BettingMatch | null>(null);
   const [userBet, setUserBet] = useState<UserBet | null>(null);
   const [bettingStats, setBettingStats] = useState<BettingStats | null>(null);
@@ -88,15 +99,9 @@ export function EnhancedLiveBetting({
   const quickBetAmounts = [10, 25, 50, 100, 250, 500];
 
   // Optimized fetch for current betting match
-  const {
-    data: currentMatchData,
-    loading: matchLoading,
-    refetch: refetchMatch,
-  } = useOptimizedFetch({
+  const { data: currentMatchData, refetch: refetchMatch } = useOptimizedFetch({
     key: `current-match-${tournamentId}`,
     fetcher: async () => {
-      console.log("🔍 Fetching betting data for tournament:", tournamentId);
-
       // First, let's check if current_betting_matches view exists
       const { error: viewError } = await supabase
         .from("current_betting_matches")
@@ -104,10 +109,7 @@ export function EnhancedLiveBetting({
         .limit(1);
 
       if (viewError) {
-        console.error("❌ current_betting_matches view error:", viewError);
-
         // Fallback: try to get data from betting_matches table directly
-        console.log("🔄 Trying fallback to betting_matches table...");
         const { data: fallbackData, error: fallbackError } = await supabase
           .from("betting_matches")
           .select("*")
@@ -118,11 +120,9 @@ export function EnhancedLiveBetting({
           .single();
 
         if (fallbackError) {
-          console.error("❌ Fallback betting_matches error:", fallbackError);
           return null;
         }
 
-        console.log("✅ Found betting match via fallback:", fallbackData);
         return fallbackData;
       }
 
@@ -137,11 +137,9 @@ export function EnhancedLiveBetting({
         .single();
 
       if (error && error.code !== "PGRST116") {
-        console.error("❌ Error fetching current match:", error);
         return null;
       }
 
-      console.log("✅ Found betting match:", data);
       return data;
     },
     retryOptions: { maxRetries: 3, delay: 1000, backoff: true },
@@ -151,7 +149,6 @@ export function EnhancedLiveBetting({
   // Update current match state when data changes
   useEffect(() => {
     if (currentMatchData) {
-      console.log("Current betting match data:", currentMatchData);
       setCurrentMatch(currentMatchData);
       calculateTimeLeft(currentMatchData);
 
@@ -167,7 +164,6 @@ export function EnhancedLiveBetting({
         player2_odds: 2.0,
       };
 
-      console.log("Setting initial stats from view:", stats);
       setBettingStats(stats);
 
       // Fetch detailed stats and recent bets
@@ -198,19 +194,14 @@ export function EnhancedLiveBetting({
   // Fetch betting statistics
   const fetchBettingStats = async (matchId: string) => {
     try {
-      console.log("Fetching betting stats for match:", matchId);
-
       const { data: bets, error } = await supabase
         .from("user_bets")
         .select("bet_on_player_id, points_wagered")
         .eq("match_id", matchId);
 
       if (error) {
-        console.error("Error fetching betting stats:", error);
         return;
       }
-
-      console.log("Found bets:", bets);
 
       if (bets && bets.length > 0) {
         // Get the current match data to access player IDs
@@ -221,11 +212,8 @@ export function EnhancedLiveBetting({
           .single();
 
         if (matchError) {
-          console.error("Error fetching match data:", matchError);
           return;
         }
-
-        console.log("Match data:", matchData);
 
         const player1Bets = bets.filter(
           (bet) => bet.bet_on_player_id === matchData.player1_id
@@ -233,9 +221,6 @@ export function EnhancedLiveBetting({
         const player2Bets = bets.filter(
           (bet) => bet.bet_on_player_id === matchData.player2_id
         );
-
-        console.log("Player 1 bets:", player1Bets);
-        console.log("Player 2 bets:", player2Bets);
 
         const player1Points = player1Bets.reduce(
           (sum, bet) => sum + bet.points_wagered,
@@ -245,9 +230,6 @@ export function EnhancedLiveBetting({
           (sum, bet) => sum + bet.points_wagered,
           0
         );
-        console.log("Player 1 points:", player1Points);
-        console.log("Player 2 points:", player2Points);
-        console.log("Total points from view:", matchData.total_points_wagered);
 
         // Calculate dynamic odds (simplified)
         const totalWagered = matchData.total_points_wagered || 0;
@@ -271,10 +253,8 @@ export function EnhancedLiveBetting({
           player2_odds: Math.max(1.1, Math.min(10, player2Odds)),
         };
 
-        console.log("Setting betting stats:", stats);
         setBettingStats(stats);
       } else {
-        console.log("No bets found, keeping current stats");
         // Don't reset stats if no bets found, keep the ones from the view
       }
     } catch (error) {
@@ -298,7 +278,6 @@ export function EnhancedLiveBetting({
         .limit(10);
 
       if (error) {
-        console.error("Error fetching recent bets:", error);
         return;
       }
 
@@ -321,7 +300,6 @@ export function EnhancedLiveBetting({
         .single();
 
       if (error && error.code !== "PGRST116") {
-        console.error("Error fetching user bet:", error);
         return;
       }
 
@@ -349,48 +327,58 @@ export function EnhancedLiveBetting({
     if (!selectedPlayer || !betAmount || !currentMatch || !user) return;
 
     const amount = parseInt(betAmount);
-    if (amount <= 0 || amount > userPoints) return;
+    if (amount <= 0) return;
+
+    // Check if user has enough betting points
+    if (!userPointData || amount > userPointData.betting_points) {
+      setError(
+        "Insufficient betting points. Purchase more points to continue betting."
+      );
+      setShowPurchaseModal(true);
+      return;
+    }
 
     setIsPlacingBet(true);
     setError(null);
 
     try {
-      // Calculate potential winnings based on current odds
-      const potentialWinnings = bettingStats
-        ? selectedPlayer === currentMatch.player1_id
-          ? Math.floor(amount * bettingStats.player1_odds)
-          : Math.floor(amount * bettingStats.player2_odds)
-        : amount * 2;
+      // Use the betting_matches specific function to place bet
+      const { data: betData, error: betError } = await supabase.rpc(
+        "place_betting_match_bet",
+        {
+          match_uuid: currentMatch.id,
+          bet_on_player_uuid: selectedPlayer,
+          points_to_wager: amount,
+        }
+      );
 
-      const { data, error } = await supabase
-        .from("user_bets")
-        .insert({
-          user_id: user.id,
-          match_id: currentMatch.id,
-          bet_on_player_id: selectedPlayer,
-          points_wagered: amount,
-          potential_winnings: potentialWinnings,
-        })
-        .select()
-        .single();
-
-      if (error) {
-        console.error("Error placing bet:", error);
-        setError("Failed to place bet. Please try again.");
+      if (betError) {
+        setError(betError.message || "Failed to place bet");
         return;
       }
 
-      if (data) {
-        // Update local state
-        setUserBet(data);
-        setBetAmount("");
-        setSelectedPlayer(null);
-        setShowConfirmation(false);
+      if (betData) {
+        // Get the bet details
+        const { data: betDetails, error: detailsError } = await supabase
+          .from("user_bets")
+          .select("*")
+          .eq("id", betData)
+          .single();
 
-        // Refresh data
-        await refetchMatch();
-        await fetchBettingStats(currentMatch.id);
-        await fetchRecentBets(currentMatch.id);
+        if (detailsError) {
+          console.error("Error fetching bet details:", detailsError);
+        } else {
+          // Update local state
+          setUserBet(betDetails);
+          setBetAmount("");
+          setSelectedPlayer(null);
+          setShowConfirmation(false);
+
+          // Refresh data
+          await refetchMatch();
+          await fetchBettingStats(currentMatch.id);
+          await fetchRecentBets(currentMatch.id);
+        }
       }
     } catch (error) {
       console.error("Error placing bet:", error);
@@ -432,10 +420,6 @@ export function EnhancedLiveBetting({
   }, [currentMatch]);
 
   if (!currentMatch) {
-    console.log(
-      "🔍 No current betting match found for tournament:",
-      tournamentId
-    );
     return (
       <Card className="w-full bg-gradient-to-br from-slate-900 to-slate-800 border-slate-700">
         <CardHeader>
@@ -451,10 +435,6 @@ export function EnhancedLiveBetting({
             <p className="text-sm text-slate-500 mt-2">
               Check back when a match starts!
             </p>
-            <div className="mt-4 p-2 bg-slate-800 rounded text-xs text-slate-400">
-              <p>Debug: Tournament ID: {tournamentId}</p>
-              <p>Loading: {matchLoading ? "Yes" : "No"}</p>
-            </div>
           </div>
         </CardContent>
       </Card>
@@ -634,8 +614,13 @@ export function EnhancedLiveBetting({
                 </p>
               </div>
               <div>
-                <p className="text-slate-300 text-sm">Your Points</p>
-                <p className="text-green-400 font-bold text-lg">{userPoints}</p>
+                <p className="text-slate-300 text-sm">Betting Points</p>
+                <p className="text-green-400 font-bold text-lg">
+                  {userPointData?.betting_points || 0}
+                </p>
+                <p className="text-slate-400 text-xs">
+                  Stream: {userPointData?.stream_points || 0}
+                </p>
               </div>
             </div>
           </div>
@@ -691,7 +676,7 @@ export function EnhancedLiveBetting({
                 placeholder="Enter amount..."
                 className="bg-slate-800 border-slate-600 text-white"
                 min="1"
-                max={userPoints}
+                max={userPointData?.betting_points || 0}
               />
             </div>
 
@@ -706,7 +691,7 @@ export function EnhancedLiveBetting({
                     size="sm"
                     onClick={() => handleQuickBet(amount)}
                     className="bg-slate-800 border-slate-600 text-white hover:bg-slate-700"
-                    disabled={amount > userPoints}
+                    disabled={amount > (userPointData?.betting_points || 0)}
                   >
                     {amount}
                   </Button>
@@ -714,10 +699,14 @@ export function EnhancedLiveBetting({
                 <Button
                   variant="outline"
                   size="sm"
-                  onClick={() => setBetAmount(userPoints.toString())}
+                  onClick={() =>
+                    setBetAmount(
+                      (userPointData?.betting_points || 0).toString()
+                    )
+                  }
                   className="bg-slate-800 border-slate-600 text-white hover:bg-slate-700"
                 >
-                  All ({userPoints})
+                  All ({userPointData?.betting_points || 0})
                 </Button>
               </div>
             </div>
@@ -749,7 +738,7 @@ export function EnhancedLiveBetting({
                 !selectedPlayer ||
                 !betAmount ||
                 parseInt(betAmount) <= 0 ||
-                parseInt(betAmount) > userPoints
+                parseInt(betAmount) > (userPointData?.betting_points || 0)
               }
               className="w-full bg-gradient-to-r from-green-600 to-green-700 hover:from-green-700 hover:to-green-800 text-white font-bold py-3"
               size="lg"
@@ -871,6 +860,15 @@ export function EnhancedLiveBetting({
           </motion.div>
         )}
       </AnimatePresence>
+
+      {/* Purchase Modal */}
+      <EnhancedPointPurchaseModal
+        isOpen={showPurchaseModal}
+        onClose={() => setShowPurchaseModal(false)}
+        onSuccess={() => {
+          console.log("Purchase successful!");
+        }}
+      />
     </div>
   );
 }

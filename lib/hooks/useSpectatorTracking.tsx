@@ -35,15 +35,8 @@ export function useSpectatorTracking(tournamentId: string) {
   const addSpectator = useCallback(async () => {
     if (!tournamentId || isTracking) return;
 
-    console.log("🔍 Attempting to add spectator:", {
-      tournamentId,
-      userId: user?.id,
-      sessionId: sessionIdRef.current,
-      isTracking,
-    });
-
     try {
-      const { data, error } = await supabase.rpc("add_tournament_spectator", {
+      const { error } = await supabase.rpc("add_tournament_spectator", {
         tournament_uuid: tournamentId,
         session_id_param: sessionIdRef.current,
         user_uuid: user?.id || null,
@@ -52,15 +45,13 @@ export function useSpectatorTracking(tournamentId: string) {
       });
 
       if (error) {
-        console.error("❌ Error adding spectator:", error);
+        console.error("Error adding spectator:", error);
         return;
       }
 
-      console.log("✅ Successfully added spectator:", data);
       setIsTracking(true);
-      console.log("Added as spectator to tournament:", tournamentId);
     } catch (error) {
-      console.error("❌ Exception adding spectator:", error);
+      console.error("Exception adding spectator:", error);
     }
   }, [tournamentId, user?.id, isTracking]);
 
@@ -81,7 +72,6 @@ export function useSpectatorTracking(tournamentId: string) {
       }
 
       setIsTracking(false);
-      console.log("Removed as spectator from tournament:", tournamentId);
     } catch (error) {
       console.error("Error removing spectator:", error);
     }
@@ -112,8 +102,6 @@ export function useSpectatorTracking(tournamentId: string) {
   const fetchSpectatorCount = useCallback(async () => {
     if (!tournamentId) return;
 
-    console.log("🔍 Fetching spectator count for tournament:", tournamentId);
-
     try {
       const { data, error } = await supabase
         .from("tournament_spectator_counts")
@@ -124,24 +112,18 @@ export function useSpectatorTracking(tournamentId: string) {
       if (error) {
         if (error.code !== "PGRST116") {
           // No rows returned
-          console.error("❌ Error fetching spectator count:", error);
-        } else {
-          console.log(
-            "ℹ️ No spectator data found for tournament:",
-            tournamentId
-          );
+          console.error("Error fetching spectator count:", error);
         }
         return;
       }
 
-      console.log("✅ Spectator count data:", data);
       setSpectatorCount({
         active_spectators: data?.active_spectators || 0,
         authenticated_spectators: data?.authenticated_spectators || 0,
         anonymous_spectators: data?.anonymous_spectators || 0,
       });
     } catch (error) {
-      console.error("❌ Exception fetching spectator count:", error);
+      console.error("Exception fetching spectator count:", error);
     }
   }, [tournamentId]);
 

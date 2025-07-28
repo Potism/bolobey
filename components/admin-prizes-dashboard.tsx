@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback, useMemo } from "react";
 import {
   Trophy,
   Package,
@@ -11,6 +11,11 @@ import {
   BarChart3,
   Edit,
   Trash2,
+  ChevronLeft,
+  ChevronRight,
+  Loader2,
+  Search,
+  Filter,
 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "./ui/card";
 import { Button } from "./ui/button";
@@ -75,13 +80,47 @@ interface Redemption {
   };
 }
 
+interface PaginationInfo {
+  page: number;
+  pageSize: number;
+  total: number;
+  totalPages: number;
+}
+
+const PRIZES_PER_PAGE = 12;
+const REDEMPTIONS_PER_PAGE = 20;
+
 export default function AdminPrizesDashboard() {
+  const { user } = useAuth();
+
+  // Stats state
   const [stats, setStats] = useState<DashboardStats | null>(null);
+  const [statsLoading, setStatsLoading] = useState(true);
+
+  // Prizes state
   const [prizes, setPrizes] = useState<Prize[]>([]);
+  const [prizesLoading, setPrizesLoading] = useState(true);
+  const [prizesPagination, setPrizesPagination] = useState<PaginationInfo>({
+    page: 1,
+    pageSize: PRIZES_PER_PAGE,
+    total: 0,
+    totalPages: 0,
+  });
+
+  // Redemptions state
   const [redemptions, setRedemptions] = useState<Redemption[]>([]);
+  const [redemptionsLoading, setRedemptionsLoading] = useState(true);
+  const [redemptionsPagination, setRedemptionsPagination] =
+    useState<PaginationInfo>({
+      page: 1,
+      pageSize: REDEMPTIONS_PER_PAGE,
+      total: 0,
+      totalPages: 0,
+    });
+
+  // UI state
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState("overview");
-  const { user } = useAuth();
 
   // Form states
   const [newPrize, setNewPrize] = useState({
@@ -99,61 +138,231 @@ export default function AdminPrizesDashboard() {
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
   const [deletingPrize, setDeletingPrize] = useState<Prize | null>(null);
 
+  // Filter states
+  const [prizesSearchTerm, setPrizesSearchTerm] = useState("");
+  const [prizesCategoryFilter, setPrizesCategoryFilter] = useState("all");
+  const [redemptionsStatusFilter, setRedemptionsStatusFilter] = useState("all");
+  const [redemptionsSearchTerm, setRedemptionsSearchTerm] = useState("");
+
+  // Cache
+  const [statsCache, setStatsCache] = useState<{
+    data: DashboardStats;
+    timestamp: number;
+  } | null>(null);
+
+  const CACHE_DURATION = 2 * 60 * 1000; // 2 minutes
+
+  // Fetch dashboard stats
+  const fetchStats = useCallback(async () => {
+    try {
+      setStatsLoading(true);
+
+      const now = Date.now();
+
+      // Check cache
+      if (statsCache && now - statsCache.timestamp < CACHE_DURATION) {
+        setStats(statsCache.data);
+        setStatsLoading(false);
+        return;
+      }
+
+      // Fetch all data for stats
+      const [prizesResult, redemptionsResult] = await Promise.all([
+        supabase.from("prizes").select("*"),
+        supabase.rpc("get_all_redemptions_admin"),
+      ]);
+
+      const prizesData = prizesResult.data || [];
+      const redemptionsData = redemptionsResult.data || [];
+
+      const stats: DashboardStats = {
+        totalPrizes: prizesData.length,
+        totalRedemptions: redemptionsData.length,
+        totalPointsSpent: redemptionsData.reduce(
+          (sum: number, r: any) => sum + (r.points_spent || 0),
+          0
+        ),
+        pendingRedemptions: redemptionsData.filter(
+          (r: any) => r.status === "pending"
+        ).length,
+        lowStockPrizes: prizesData.filter((p: any) => p.stock_quantity <= 5)
+          .length,
+        activeUsers: 0, // TODO: Implement active users tracking
+      };
+
+      setStats(stats);
+      setStatsCache({ data: stats, timestamp: now });
+    } catch (error) {
+      console.error("Error fetching stats:", error);
+    } finally {
+      setStatsLoading(false);
+    }
+  }, [statsCache]);
+
+  // Fetch prizes with pagination
+  const fetchPrizes = useCallback(
+    async (page: number = 1) => {
+      try {
+        setPrizesLoading(true);
+
+        let query = supabase
+          .from("prizes")
+          .select("*", { count: "exact" })
+          .order("created_at", { ascending: false });
+
+        // Apply filters
+        if (prizesCategoryFilter !== "all") {
+          query = query.eq("category", prizesCategoryFilter);
+        }
+
+        if (prizesSearchTerm) {
+          query = query.or(
+            `name.ilike.%${prizesSearchTerm}%,description.ilike.%${prizesSearchTerm}%`
+          );
+        }
+
+        // Apply pagination
+        const from = (page - 1) * PRIZES_PER_PAGE;
+        const to = from + PRIZES_PER_PAGE - 1;
+        query = query.range(from, to);
+
+        const { data, error, count } = await query;
+
+        if (error) {
+          console.error("Error fetching prizes:", error);
+          return;
+        }
+
+        const totalPages = Math.ceil((count || 0) / PRIZES_PER_PAGE);
+
+        setPrizes(data || []);
+        setPrizesPagination({
+          page,
+          pageSize: PRIZES_PER_PAGE,
+          total: count || 0,
+          totalPages,
+        });
+      } catch (error) {
+        console.error("Error fetching prizes:", error);
+      } finally {
+        setPrizesLoading(false);
+      }
+    },
+    [prizesCategoryFilter, prizesSearchTerm]
+  );
+
+  // Fetch redemptions with pagination
+  const fetchRedemptions = useCallback(
+    async (page: number = 1) => {
+      try {
+        setRedemptionsLoading(true);
+
+        const { data: redemptionsData, error: redemptionsError } =
+          await supabase.rpc("get_all_redemptions_admin");
+
+        if (redemptionsError) {
+          console.error("Error fetching redemptions:", redemptionsError);
+          setRedemptions([]);
+          return;
+        }
+
+        // Apply filters
+        let filteredData = redemptionsData || [];
+
+        if (redemptionsStatusFilter !== "all") {
+          filteredData = filteredData.filter(
+            (r: any) => r.status === redemptionsStatusFilter
+          );
+        }
+
+        if (redemptionsSearchTerm) {
+          filteredData = filteredData.filter(
+            (r: any) =>
+              r.user_display_name
+                ?.toLowerCase()
+                .includes(redemptionsSearchTerm.toLowerCase()) ||
+              r.prize_name
+                ?.toLowerCase()
+                .includes(redemptionsSearchTerm.toLowerCase())
+          );
+        }
+
+        // Apply pagination
+        const totalPages = Math.ceil(
+          filteredData.length / REDEMPTIONS_PER_PAGE
+        );
+        const startIndex = (page - 1) * REDEMPTIONS_PER_PAGE;
+        const endIndex = startIndex + REDEMPTIONS_PER_PAGE;
+        const paginatedData = filteredData.slice(startIndex, endIndex);
+
+        // Transform data
+        const transformedData = paginatedData.map((item: any) => ({
+          id: item.redemption_id,
+          user_id: item.user_id,
+          prize_id: item.prize_id,
+          points_spent: item.points_spent,
+          status: item.status,
+          created_at: item.created_at,
+          user: {
+            display_name: item.user_display_name || "Unknown User",
+            email: item.user_email || "unknown@example.com",
+          },
+          prize: {
+            name: item.prize_name,
+            category: item.prize_category,
+          },
+        }));
+
+        setRedemptions(transformedData);
+        setRedemptionsPagination({
+          page,
+          pageSize: REDEMPTIONS_PER_PAGE,
+          total: filteredData.length,
+          totalPages,
+        });
+      } catch (error) {
+        console.error("Error fetching redemptions:", error);
+      } finally {
+        setRedemptionsLoading(false);
+      }
+    },
+    [redemptionsStatusFilter, redemptionsSearchTerm]
+  );
+
+  // Initialize data
   useEffect(() => {
     if (user) {
-      fetchDashboardData();
+      Promise.all([fetchStats(), fetchPrizes(1), fetchRedemptions(1)]).finally(
+        () => setLoading(false)
+      );
     }
-  }, [user]);
+  }, [user, fetchStats, fetchPrizes, fetchRedemptions]);
 
-  const fetchDashboardData = async () => {
-    try {
-      // Fetch prizes
-      const { data: prizesData } = await supabase
-        .from("prizes")
-        .select("*")
-        .order("created_at", { ascending: false });
-
-      // Fetch redemptions with user and prize data
-      const { data: redemptionsData } = await supabase
-        .from("prize_redemptions")
-        .select(
-          `
-          *,
-          user:users(display_name, email),
-          prize:prizes(name, category)
-        `
-        )
-        .order("created_at", { ascending: false });
-
-      // Calculate stats
-      const totalPrizes = prizesData?.length || 0;
-      const totalRedemptions = redemptionsData?.length || 0;
-      const totalPointsSpent =
-        redemptionsData?.reduce((sum, r) => sum + (r.points_spent || 0), 0) ||
-        0;
-      const pendingRedemptions =
-        redemptionsData?.filter((r) => r.status === "pending").length || 0;
-      const lowStockPrizes =
-        prizesData?.filter((p) => p.stock_quantity <= 5).length || 0;
-
-      setStats({
-        totalPrizes,
-        totalRedemptions,
-        totalPointsSpent,
-        pendingRedemptions,
-        lowStockPrizes,
-        activeUsers: 0, // TODO: Implement active users tracking
-      });
-
-      setPrizes((prizesData as Prize[]) || []);
-      setRedemptions((redemptionsData as Redemption[]) || []);
-      setLoading(false);
-    } catch (error) {
-      console.error("Error fetching dashboard data:", error);
-      setLoading(false);
+  // Refresh data when filters change
+  useEffect(() => {
+    if (!loading) {
+      fetchPrizes(1);
     }
+  }, [prizesCategoryFilter, prizesSearchTerm]);
+
+  useEffect(() => {
+    if (!loading) {
+      fetchRedemptions(1);
+    }
+  }, [redemptionsStatusFilter, redemptionsSearchTerm]);
+
+  // Pagination handlers
+  const handlePrizesPageChange = (newPage: number) => {
+    setPrizesPagination((prev) => ({ ...prev, page: newPage }));
+    fetchPrizes(newPage);
   };
 
+  const handleRedemptionsPageChange = (newPage: number) => {
+    setRedemptionsPagination((prev) => ({ ...prev, page: newPage }));
+    fetchRedemptions(newPage);
+  };
+
+  // CRUD operations
   const addPrize = async () => {
     if (
       !newPrize.name ||
@@ -195,7 +404,10 @@ export default function AdminPrizesDashboard() {
         is_featured: false,
       });
 
-      fetchDashboardData();
+      // Refresh data and clear cache
+      setStatsCache(null);
+      await Promise.all([fetchStats(), fetchPrizes(1)]);
+
       alert("Prize added successfully!");
     } catch (error) {
       console.error("Error adding prize:", error);
@@ -219,9 +431,12 @@ export default function AdminPrizesDashboard() {
         .eq("id", prize.id);
 
       if (error) throw error;
+
       setShowEditDialog(false);
       setEditingPrize(null);
-      fetchDashboardData();
+
+      // Refresh data
+      await Promise.all([fetchStats(), fetchPrizes(prizesPagination.page)]);
     } catch (error) {
       console.error("Error editing prize:", error);
     }
@@ -229,29 +444,20 @@ export default function AdminPrizesDashboard() {
 
   const deletePrize = async (prizeId: string) => {
     try {
-      // First try the safe delete function
-      const { error } = await supabase.rpc("delete_prize_safe", {
-        prize_uuid: prizeId,
-      });
+      const { error } = await supabase
+        .from("prizes")
+        .delete()
+        .eq("id", prizeId);
 
-      if (error) {
-        // If the function doesn't exist, fall back to direct delete
-        console.log(
-          "Safe delete function not available, trying direct delete..."
-        );
-        const { error: directError } = await supabase
-          .from("prizes")
-          .delete()
-          .eq("id", prizeId);
-
-        if (directError) throw directError;
-      }
+      if (error) throw error;
 
       setShowDeleteDialog(false);
       setDeletingPrize(null);
-      fetchDashboardData();
 
-      // Show success message
+      // Refresh data and clear cache
+      setStatsCache(null);
+      await Promise.all([fetchStats(), fetchPrizes(1)]);
+
       alert("Prize deleted successfully!");
     } catch (error: any) {
       console.error("Error deleting prize:", error);
@@ -259,71 +465,25 @@ export default function AdminPrizesDashboard() {
     }
   };
 
-  const openEditDialog = (prize: Prize) => {
-    setEditingPrize({ ...prize });
-    setShowEditDialog(true);
-  };
-
-  const openDeleteDialog = (prize: Prize) => {
-    setDeletingPrize(prize);
-    setShowDeleteDialog(true);
-  };
-
   const updateRedemptionStatus = async (
     redemptionId: string,
     newStatus: string
   ) => {
     try {
-      // First, get the redemption details
-      const { data: redemptionData, error: fetchError } = await supabase
-        .from("prize_redemptions")
-        .select("*")
-        .eq("id", redemptionId)
-        .single();
-
-      if (fetchError) throw fetchError;
-
-      // Update the redemption status
-      const { error: updateError } = await supabase
+      const { error } = await supabase
         .from("prize_redemptions")
         .update({ status: newStatus })
         .eq("id", redemptionId);
 
-      if (updateError) throw updateError;
+      if (error) throw error;
 
-      // If rejecting, handle refund and stock restoration
-      if (newStatus === "rejected" && redemptionData) {
-        // Refund points to user
-        const { error: refundError } = await supabase
-          .from("stream_points")
-          .insert({
-            user_id: redemptionData.user_id,
-            points: redemptionData.points_spent,
-            transaction_type: "prize_refund",
-            description: `Refund for rejected redemption`,
-          });
-
-        if (refundError) {
-          console.error("Error refunding points:", refundError);
-        }
-
-        // Restore prize stock
-        const { error: stockError } = await supabase
-          .from("prizes")
-          .update({
-            stock_quantity: redemptionData.stock_quantity + 1,
-            total_redemptions: redemptionData.total_redemptions - 1,
-          })
-          .eq("id", redemptionData.prize_id);
-
-        if (stockError) {
-          console.error("Error restoring stock:", stockError);
-        }
-      }
-
-      // Show success message
       alert(`Redemption status updated to ${newStatus} successfully!`);
-      fetchDashboardData();
+
+      // Refresh data
+      await Promise.all([
+        fetchStats(),
+        fetchRedemptions(redemptionsPagination.page),
+      ]);
     } catch (error) {
       console.error("Error updating redemption status:", error);
       const errorMessage =
@@ -332,6 +492,7 @@ export default function AdminPrizesDashboard() {
     }
   };
 
+  // Utility functions
   const getStatusColor = (status: string) => {
     const colors: { [key: string]: string } = {
       pending:
@@ -403,7 +564,13 @@ export default function AdminPrizesDashboard() {
             <Trophy className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">{stats?.totalPrizes}</div>
+            <div className="text-2xl font-bold">
+              {statsLoading ? (
+                <Loader2 className="h-6 w-6 animate-spin" />
+              ) : (
+                stats?.totalPrizes
+              )}
+            </div>
             <p className="text-xs text-muted-foreground">
               Available for redemption
             </p>
@@ -418,9 +585,15 @@ export default function AdminPrizesDashboard() {
             <Package className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">{stats?.totalRedemptions}</div>
+            <div className="text-2xl font-bold">
+              {statsLoading ? (
+                <Loader2 className="h-6 w-6 animate-spin" />
+              ) : (
+                stats?.totalRedemptions
+              )}
+            </div>
             <p className="text-xs text-muted-foreground">
-              {stats?.totalPointsSpent} points spent
+              {stats?.totalPointsSpent} stream points spent
             </p>
           </CardContent>
         </Card>
@@ -432,7 +605,11 @@ export default function AdminPrizesDashboard() {
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">
-              {stats?.pendingRedemptions}
+              {statsLoading ? (
+                <Loader2 className="h-6 w-6 animate-spin" />
+              ) : (
+                stats?.pendingRedemptions
+              )}
             </div>
             <p className="text-xs text-muted-foreground">Awaiting approval</p>
           </CardContent>
@@ -444,7 +621,13 @@ export default function AdminPrizesDashboard() {
             <TrendingUp className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">{stats?.lowStockPrizes}</div>
+            <div className="text-2xl font-bold">
+              {statsLoading ? (
+                <Loader2 className="h-6 w-6 animate-spin" />
+              ) : (
+                stats?.lowStockPrizes
+              )}
+            </div>
             <p className="text-xs text-muted-foreground">Need restocking</p>
           </CardContent>
         </Card>
@@ -491,7 +674,7 @@ export default function AdminPrizesDashboard() {
                           {redemption.status}
                         </Badge>
                         <p className="text-sm text-muted-foreground">
-                          {redemption.points_spent} points
+                          {redemption.points_spent} stream points
                         </p>
                       </div>
                     </div>
@@ -577,7 +760,7 @@ export default function AdminPrizesDashboard() {
                   </div>
                   <div className="grid grid-cols-2 gap-4">
                     <div>
-                      <Label htmlFor="points">Points Cost</Label>
+                      <Label htmlFor="points">Stream Points Cost</Label>
                       <Input
                         id="points"
                         type="number"
@@ -585,7 +768,7 @@ export default function AdminPrizesDashboard() {
                         onChange={(e) =>
                           setNewPrize({
                             ...newPrize,
-                            points_cost: parseInt(e.target.value),
+                            points_cost: e.target.value,
                           })
                         }
                       />
@@ -599,7 +782,7 @@ export default function AdminPrizesDashboard() {
                         onChange={(e) =>
                           setNewPrize({
                             ...newPrize,
-                            stock_quantity: parseInt(e.target.value),
+                            stock_quantity: e.target.value,
                           })
                         }
                       />
@@ -620,7 +803,10 @@ export default function AdminPrizesDashboard() {
                         <SelectItem value="gaming">Gaming</SelectItem>
                         <SelectItem value="electronics">Electronics</SelectItem>
                         <SelectItem value="clothing">Clothing</SelectItem>
-                        <SelectItem value="food">Food & Drinks</SelectItem>
+                        <SelectItem value="accessories">Accessories</SelectItem>
+                        <SelectItem value="collectibles">
+                          Collectibles
+                        </SelectItem>
                         <SelectItem value="other">Other</SelectItem>
                       </SelectContent>
                     </Select>
@@ -647,116 +833,358 @@ export default function AdminPrizesDashboard() {
             </Dialog>
           </div>
 
+          {/* Prizes Filters */}
+          <Card>
+            <CardContent className="pt-6">
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div>
+                  <Label htmlFor="prizes-search">Search Prizes</Label>
+                  <Input
+                    id="prizes-search"
+                    placeholder="Search prizes..."
+                    value={prizesSearchTerm}
+                    onChange={(e) => setPrizesSearchTerm(e.target.value)}
+                  />
+                </div>
+                <div>
+                  <Label htmlFor="prizes-category">Category</Label>
+                  <Select
+                    value={prizesCategoryFilter}
+                    onValueChange={setPrizesCategoryFilter}
+                  >
+                    <SelectTrigger>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">All Categories</SelectItem>
+                      <SelectItem value="gaming">Gaming</SelectItem>
+                      <SelectItem value="electronics">Electronics</SelectItem>
+                      <SelectItem value="clothing">Clothing</SelectItem>
+                      <SelectItem value="accessories">Accessories</SelectItem>
+                      <SelectItem value="collectibles">Collectibles</SelectItem>
+                      <SelectItem value="other">Other</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="flex items-end">
+                  <Button
+                    variant="outline"
+                    onClick={() => {
+                      setPrizesSearchTerm("");
+                      setPrizesCategoryFilter("all");
+                    }}
+                    className="w-full"
+                  >
+                    <Filter className="h-4 w-4 mr-2" />
+                    Clear Filters
+                  </Button>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+
           {/* Prizes Grid */}
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-            {prizes.map((prize) => (
-              <Card key={prize.id}>
-                <CardHeader>
-                  <div className="flex justify-between items-start">
-                    <div>
-                      <CardTitle>{prize.name}</CardTitle>
-                      <p className="text-sm text-muted-foreground mb-3">
-                        {prize.description}
-                      </p>
-                    </div>
-                    <Badge className={getCategoryColor(prize.category)}>
-                      {prize.category}
-                    </Badge>
+          {prizesLoading ? (
+            <div className="flex items-center justify-center py-12">
+              <Loader2 className="h-8 w-8 animate-spin" />
+              <span className="ml-2">Loading prizes...</span>
+            </div>
+          ) : (
+            <>
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                {prizes.map((prize) => (
+                  <Card key={prize.id}>
+                    <CardHeader>
+                      <div className="flex justify-between items-start">
+                        <div>
+                          <CardTitle>{prize.name}</CardTitle>
+                          <p className="text-sm text-muted-foreground mb-3">
+                            {prize.description}
+                          </p>
+                        </div>
+                        <Badge className={getCategoryColor(prize.category)}>
+                          {prize.category}
+                        </Badge>
+                      </div>
+                    </CardHeader>
+                    <CardContent>
+                      <div className="space-y-2">
+                        <div className="flex justify-between">
+                          <span className="text-muted-foreground">
+                            Stream Points:
+                          </span>
+                          <span className="font-medium">
+                            {prize.points_cost}
+                          </span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span className="text-muted-foreground">Stock:</span>
+                          <span className="font-medium">
+                            {prize.stock_quantity}
+                          </span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span className="text-muted-foreground">
+                            Featured:
+                          </span>
+                          <span className="font-medium">
+                            {prize.is_featured ? "Yes" : "No"}
+                          </span>
+                        </div>
+                      </div>
+                      <div className="flex gap-2 pt-2">
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => {
+                            setEditingPrize({ ...prize });
+                            setShowEditDialog(true);
+                          }}
+                          className="flex-1"
+                        >
+                          <Edit className="h-4 w-4 mr-1" />
+                          Edit
+                        </Button>
+                        <Button
+                          variant="destructive"
+                          size="sm"
+                          onClick={() => {
+                            setDeletingPrize(prize);
+                            setShowDeleteDialog(true);
+                          }}
+                          className="flex-1"
+                        >
+                          <Trash2 className="h-4 w-4 mr-1" />
+                          Delete
+                        </Button>
+                      </div>
+                    </CardContent>
+                  </Card>
+                ))}
+              </div>
+
+              {/* Prizes Pagination */}
+              {prizesPagination.totalPages > 1 && (
+                <div className="flex items-center justify-between">
+                  <div className="text-sm text-muted-foreground">
+                    Showing{" "}
+                    {(prizesPagination.page - 1) * prizesPagination.pageSize +
+                      1}{" "}
+                    to{" "}
+                    {Math.min(
+                      prizesPagination.page * prizesPagination.pageSize,
+                      prizesPagination.total
+                    )}{" "}
+                    of {prizesPagination.total} prizes
                   </div>
-                </CardHeader>
-                <CardContent>
-                  <div className="space-y-2">
-                    <div className="flex justify-between">
-                      <span className="text-muted-foreground">Points:</span>
-                      <span className="font-medium">{prize.points_cost}</span>
-                    </div>
-                    <div className="flex justify-between">
-                      <span className="text-muted-foreground">Stock:</span>
-                      <span className="font-medium">
-                        {prize.stock_quantity}
-                      </span>
-                    </div>
-                    <div className="flex justify-between">
-                      <span className="text-muted-foreground">Featured:</span>
-                      <span className="font-medium">
-                        {prize.is_featured ? "Yes" : "No"}
-                      </span>
-                    </div>
-                  </div>
-                  <div className="flex gap-2 pt-2">
+                  <div className="flex items-center gap-2">
                     <Button
                       variant="outline"
                       size="sm"
-                      onClick={() => openEditDialog(prize)}
-                      className="flex-1"
+                      onClick={() =>
+                        handlePrizesPageChange(prizesPagination.page - 1)
+                      }
+                      disabled={prizesPagination.page <= 1}
                     >
-                      <Edit className="h-4 w-4 mr-1" />
-                      Edit
+                      <ChevronLeft className="h-4 w-4" />
+                      Previous
                     </Button>
+                    <span className="text-sm">
+                      Page {prizesPagination.page} of{" "}
+                      {prizesPagination.totalPages}
+                    </span>
                     <Button
-                      variant="destructive"
+                      variant="outline"
                       size="sm"
-                      onClick={() => openDeleteDialog(prize)}
-                      className="flex-1"
+                      onClick={() =>
+                        handlePrizesPageChange(prizesPagination.page + 1)
+                      }
+                      disabled={
+                        prizesPagination.page >= prizesPagination.totalPages
+                      }
                     >
-                      <Trash2 className="h-4 w-4 mr-1" />
-                      Delete
+                      Next
+                      <ChevronRight className="h-4 w-4" />
                     </Button>
                   </div>
-                </CardContent>
-              </Card>
-            ))}
-          </div>
+                </div>
+              )}
+            </>
+          )}
         </TabsContent>
 
         <TabsContent value="redemptions" className="space-y-4">
           <h2 className="text-2xl font-bold">Redemption Management</h2>
-          <div className="space-y-4">
-            {redemptions.map((redemption) => (
-              <Card key={redemption.id}>
-                <CardContent className="pt-6">
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <h3 className="font-medium">{redemption.prize.name}</h3>
-                      <p className="text-sm text-muted-foreground">
-                        {redemption.user?.display_name || "Unknown User"}
-                      </p>
-                      <p className="text-sm text-muted-foreground">
-                        {redemption.points_spent} points •{" "}
-                        {redemption.created_at}
-                      </p>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <Badge className={getStatusColor(redemption.status)}>
-                        {redemption.status}
-                      </Badge>
-                      {redemption.status === "pending" && (
-                        <div className="flex gap-1">
-                          <Button
-                            size="sm"
-                            onClick={() =>
-                              updateRedemptionStatus(redemption.id, "approved")
-                            }
-                          >
-                            Approve
-                          </Button>
-                          <Button
-                            variant="destructive"
-                            size="sm"
-                            onClick={() =>
-                              updateRedemptionStatus(redemption.id, "rejected")
-                            }
-                          >
-                            Reject
-                          </Button>
+
+          {/* Redemptions Filters */}
+          <Card>
+            <CardContent className="pt-6">
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div>
+                  <Label htmlFor="redemptions-search">Search Redemptions</Label>
+                  <Input
+                    id="redemptions-search"
+                    placeholder="Search by user or prize..."
+                    value={redemptionsSearchTerm}
+                    onChange={(e) => setRedemptionsSearchTerm(e.target.value)}
+                  />
+                </div>
+                <div>
+                  <Label htmlFor="redemptions-status">Status</Label>
+                  <Select
+                    value={redemptionsStatusFilter}
+                    onValueChange={setRedemptionsStatusFilter}
+                  >
+                    <SelectTrigger>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">All Status</SelectItem>
+                      <SelectItem value="pending">Pending</SelectItem>
+                      <SelectItem value="approved">Approved</SelectItem>
+                      <SelectItem value="shipped">Shipped</SelectItem>
+                      <SelectItem value="delivered">Delivered</SelectItem>
+                      <SelectItem value="cancelled">Cancelled</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="flex items-end">
+                  <Button
+                    variant="outline"
+                    onClick={() => {
+                      setRedemptionsSearchTerm("");
+                      setRedemptionsStatusFilter("all");
+                    }}
+                    className="w-full"
+                  >
+                    <Filter className="h-4 w-4 mr-2" />
+                    Clear Filters
+                  </Button>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* Redemptions List */}
+          {redemptionsLoading ? (
+            <div className="flex items-center justify-center py-12">
+              <Loader2 className="h-8 w-8 animate-spin" />
+              <span className="ml-2">Loading redemptions...</span>
+            </div>
+          ) : (
+            <>
+              <div className="space-y-4">
+                {redemptions.map((redemption) => (
+                  <Card key={redemption.id}>
+                    <CardContent className="pt-6">
+                      <div className="flex items-center justify-between">
+                        <div>
+                          <h3 className="font-medium">
+                            {redemption.prize.name}
+                          </h3>
+                          <p className="text-sm text-muted-foreground">
+                            {redemption.user?.display_name || "Unknown User"}
+                          </p>
+                          <p className="text-sm text-muted-foreground">
+                            {redemption.points_spent} stream points •{" "}
+                            {new Date(
+                              redemption.created_at
+                            ).toLocaleDateString()}
+                          </p>
                         </div>
-                      )}
-                    </div>
+                        <div className="flex items-center gap-2">
+                          <Badge className={getStatusColor(redemption.status)}>
+                            {redemption.status}
+                          </Badge>
+                          {redemption.status === "pending" && (
+                            <div className="flex gap-1">
+                              <Button
+                                size="sm"
+                                onClick={() =>
+                                  updateRedemptionStatus(
+                                    redemption.id,
+                                    "approved"
+                                  )
+                                }
+                              >
+                                Approve
+                              </Button>
+                              <Button
+                                variant="destructive"
+                                size="sm"
+                                onClick={() =>
+                                  updateRedemptionStatus(
+                                    redemption.id,
+                                    "rejected"
+                                  )
+                                }
+                              >
+                                Reject
+                              </Button>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    </CardContent>
+                  </Card>
+                ))}
+              </div>
+
+              {/* Redemptions Pagination */}
+              {redemptionsPagination.totalPages > 1 && (
+                <div className="flex items-center justify-between">
+                  <div className="text-sm text-muted-foreground">
+                    Showing{" "}
+                    {(redemptionsPagination.page - 1) *
+                      redemptionsPagination.pageSize +
+                      1}{" "}
+                    to{" "}
+                    {Math.min(
+                      redemptionsPagination.page *
+                        redemptionsPagination.pageSize,
+                      redemptionsPagination.total
+                    )}{" "}
+                    of {redemptionsPagination.total} redemptions
                   </div>
-                </CardContent>
-              </Card>
-            ))}
-          </div>
+                  <div className="flex items-center gap-2">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() =>
+                        handleRedemptionsPageChange(
+                          redemptionsPagination.page - 1
+                        )
+                      }
+                      disabled={redemptionsPagination.page <= 1}
+                    >
+                      <ChevronLeft className="h-4 w-4" />
+                      Previous
+                    </Button>
+                    <span className="text-sm">
+                      Page {redemptionsPagination.page} of{" "}
+                      {redemptionsPagination.totalPages}
+                    </span>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() =>
+                        handleRedemptionsPageChange(
+                          redemptionsPagination.page + 1
+                        )
+                      }
+                      disabled={
+                        redemptionsPagination.page >=
+                        redemptionsPagination.totalPages
+                      }
+                    >
+                      Next
+                      <ChevronRight className="h-4 w-4" />
+                    </Button>
+                  </div>
+                </div>
+              )}
+            </>
+          )}
         </TabsContent>
 
         <TabsContent value="analytics" className="space-y-4">
@@ -798,13 +1226,16 @@ export default function AdminPrizesDashboard() {
               <CardContent>
                 <div className="space-y-2">
                   {prizes
-                    .sort((a, b) => b.total_redemptions - a.total_redemptions)
+                    .sort(
+                      (a, b) =>
+                        (b.total_redemptions || 0) - (a.total_redemptions || 0)
+                    )
                     .slice(0, 5)
                     .map((prize) => (
                       <div key={prize.id} className="flex justify-between">
                         <span>{prize.name}</span>
                         <span className="font-medium">
-                          {prize.total_redemptions} redemptions
+                          {prize.total_redemptions || 0} redemptions
                         </span>
                       </div>
                     ))}
@@ -848,7 +1279,7 @@ export default function AdminPrizesDashboard() {
               </div>
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <Label htmlFor="edit-points">Points Cost</Label>
+                  <Label htmlFor="edit-points">Stream Points Cost</Label>
                   <Input
                     id="edit-points"
                     type="number"
@@ -891,7 +1322,8 @@ export default function AdminPrizesDashboard() {
                     <SelectItem value="gaming">Gaming</SelectItem>
                     <SelectItem value="electronics">Electronics</SelectItem>
                     <SelectItem value="clothing">Clothing</SelectItem>
-                    <SelectItem value="food">Food & Drinks</SelectItem>
+                    <SelectItem value="accessories">Accessories</SelectItem>
+                    <SelectItem value="collectibles">Collectibles</SelectItem>
                     <SelectItem value="other">Other</SelectItem>
                   </SelectContent>
                 </Select>

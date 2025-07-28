@@ -61,6 +61,7 @@ export function OBSStreamPlayer({
       return streamUrl;
     }
 
+    // For other stream URLs, return as is
     return streamUrl;
   };
 
@@ -80,6 +81,12 @@ export function OBSStreamPlayer({
             )}
           </div>
           <div className="flex items-center gap-2">
+            {videoUrl && (
+              <Badge variant="default" className="text-xs bg-green-600">
+                <Play className="h-3 w-3 mr-1" />
+                Live Stream
+              </Badge>
+            )}
             {streamKey && (
               <Badge variant="outline" className="text-xs">
                 Key: {streamKey.slice(0, 8)}...
@@ -99,6 +106,7 @@ export function OBSStreamPlayer({
               frameBorder="0"
               allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
               allowFullScreen
+              title="Live Stream"
             />
           ) : (
             <div className="w-full h-full flex items-center justify-center text-white">

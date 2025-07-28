@@ -243,3 +243,92 @@ export interface UnreadNotificationCount {
   urgent_count: number;
   high_priority_count: number;
 }
+
+// Point System Types
+export interface UserPoints {
+  betting_points: number;
+  stream_points: number;
+  total_earned_stream_points: number;
+  total_spent_stream_points: number;
+}
+
+export interface PointTransaction {
+  id: string;
+  user_id: string;
+  type: 'betting_points' | 'stream_points';
+  amount: number;
+  transaction_type: 'purchase' | 'bet' | 'win' | 'redemption' | 'bonus' | 'refund';
+  description: string;
+  tournament_id?: string;
+  match_id?: string;
+  created_at: string;
+}
+
+export interface PointPackage {
+  id: string;
+  name: string;
+  betting_points: number;
+  bonus_points: number;
+  price_eur: number;
+  is_popular?: boolean;
+  is_featured?: boolean;
+}
+
+// Tournament Types
+export interface TournamentType {
+  id: string;
+  name: string;
+  description: string;
+  has_entry_fee: boolean;
+  entry_fee_eur?: number;
+  has_physical_prizes: boolean;
+  has_stream_prizes: boolean;
+  betting_enabled: boolean;
+  stream_enabled: boolean;
+  max_participants?: number;
+  icon: string;
+}
+
+// Achievement System
+export interface Achievement {
+  id: string;
+  name: string;
+  description: string;
+  icon: string;
+  stream_points_reward: number;
+  requirement_type: 'first_bet' | 'win_streak' | 'total_wins' | 'total_bets' | 'tournament_wins';
+  requirement_value: number;
+  is_hidden?: boolean;
+}
+
+export interface UserAchievement {
+  id: string;
+  user_id: string;
+  achievement_id: string;
+  earned_at: string;
+  progress: number;
+  is_completed: boolean;
+}
+
+// Challenge System
+export interface Challenge {
+  id: string;
+  name: string;
+  description: string;
+  type: 'daily' | 'weekly' | 'monthly';
+  stream_points_reward: number;
+  requirement_type: 'place_bets' | 'win_bets' | 'earn_stream_points' | 'participate_tournaments';
+  requirement_value: number;
+  start_date: string;
+  end_date: string;
+  is_active: boolean;
+}
+
+export interface UserChallenge {
+  id: string;
+  user_id: string;
+  challenge_id: string;
+  progress: number;
+  is_completed: boolean;
+  completed_at?: string;
+}

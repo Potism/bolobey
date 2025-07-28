@@ -5,8 +5,8 @@ import { useRouter } from "next/navigation";
 import { useAuth } from "@/lib/hooks/useAuth";
 import { supabase } from "@/lib/supabase";
 import { Navigation } from "@/components/navigation";
-import { retrySupabaseOperation } from "@/lib/utils/retry-utils";
 import ErrorBoundary from "@/lib/utils/error-boundary";
+import { TournamentTypeSelector } from "@/components/tournament-type-selector";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -32,12 +32,27 @@ import {
 } from "lucide-react";
 import Link from "next/link";
 
+interface TournamentType {
+  id: number;
+  name: string;
+  description: string;
+  category: "real" | "stream_only";
+  entry_fee_eur: number;
+  has_physical_prizes: boolean;
+  has_stream_points_prizes: boolean;
+  max_participants: number;
+  default_duration_hours: number;
+  features: string[];
+}
+
 export default function CreateTournamentPage() {
   const router = useRouter();
   const { user } = useAuth();
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  const [selectedTournamentType, setSelectedTournamentType] =
+    useState<TournamentType | null>(null);
   const [formData, setFormData] = useState({
     name: "",
     description: "",
@@ -78,9 +93,24 @@ export default function CreateTournamentPage() {
     },
   ];
 
+  const handleTournamentTypeSelect = (type: TournamentType) => {
+    setSelectedTournamentType(type);
+    // Auto-fill form based on tournament type
+    setFormData((prev) => ({
+      ...prev,
+      max_participants: type.max_participants,
+      description: type.description,
+    }));
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!user) return;
+
+    if (!selectedTournamentType) {
+      setError("Please select a tournament type");
+      return;
+    }
 
     setLoading(true);
     setError(null);
@@ -95,6 +125,7 @@ export default function CreateTournamentPage() {
           registration_deadline: formData.registration_deadline,
           max_participants: formData.max_participants,
           format: formData.format,
+          tournament_type_id: selectedTournamentType.id,
           created_by: user.id,
           status: "open",
           current_phase: "registration",
@@ -168,7 +199,24 @@ export default function CreateTournamentPage() {
             </p>
           </div>
 
-          <div className="max-w-2xl mx-auto">
+          <div className="max-w-4xl mx-auto">
+            {/* Tournament Type Selection */}
+            <Card className="mb-6">
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <Target className="h-5 w-5" />
+                  Step 1: Choose Tournament Type
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <TournamentTypeSelector
+                  selectedType={selectedTournamentType?.id || null}
+                  onTypeSelect={handleTournamentTypeSelect}
+                />
+              </CardContent>
+            </Card>
+
+            {/* Tournament Details Form */}
             <form onSubmit={handleSubmit} className="space-y-6">
               {/* Basic Information */}
               <Card>
