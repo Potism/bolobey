@@ -3,7 +3,6 @@
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Separator } from "@/components/ui/separator";
 import {
   Trophy,
   Coins,
@@ -23,20 +22,32 @@ import {
   Play,
   Eye,
   BarChart3,
+  Home,
+  ArrowLeft,
 } from "lucide-react";
 import Link from "next/link";
 
-export default function HowItWorksPage() {
+export default function GuidePage() {
   return (
     <div className="container mx-auto px-4 py-8 max-w-6xl">
+      {/* Header with Back Button */}
+      <div className="flex items-center justify-between mb-8">
+        <Link href="/">
+          <Button variant="outline" className="flex items-center gap-2">
+            <ArrowLeft className="h-4 w-4" />
+            Back to Home
+          </Button>
+        </Link>
+      </div>
+
       {/* Hero Section */}
       <div className="text-center mb-12">
         <h1 className="text-4xl font-bold mb-4 bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent">
-          How Bolobey Works
+          Bolobey Guide
         </h1>
         <p className="text-xl text-muted-foreground max-w-3xl mx-auto">
-          Learn everything about Bolobey - the ultimate tournament betting game
-          where you can earn real prizes!
+          Your complete guide to Bolobey - the ultimate tournament betting
+          platform where you can earn real prizes!
         </p>
       </div>
 
@@ -56,7 +67,7 @@ export default function HowItWorksPage() {
               </div>
               <h3 className="font-semibold mb-2">1. Get Points</h3>
               <p className="text-sm text-muted-foreground">
-                Buy betting points or earn them through gameplay
+                Purchase betting points to start playing
               </p>
             </div>
             <div className="text-center">
@@ -65,7 +76,7 @@ export default function HowItWorksPage() {
               </div>
               <h3 className="font-semibold mb-2">2. Place Bets</h3>
               <p className="text-sm text-muted-foreground">
-                Bet on tournament matches and predict winners
+                Bet on live tournament matches
               </p>
             </div>
             <div className="text-center">
@@ -74,7 +85,7 @@ export default function HowItWorksPage() {
               </div>
               <h3 className="font-semibold mb-2">3. Win Prizes</h3>
               <p className="text-sm text-muted-foreground">
-                Earn stream points and redeem amazing prizes
+                Earn stream points and redeem prizes
               </p>
             </div>
           </div>
@@ -97,16 +108,15 @@ export default function HowItWorksPage() {
             </div>
             <div className="flex items-center gap-2">
               <CheckCircle className="h-4 w-4 text-green-600" />
-              <span>Buy points or earn from winning bets</span>
+              <span>Purchase points to start betting</span>
             </div>
             <div className="flex items-center gap-2">
               <CheckCircle className="h-4 w-4 text-green-600" />
-              <span>Spendable balance for betting</span>
+              <span>Win more points when you win bets</span>
             </div>
             <div className="bg-yellow-100 dark:bg-yellow-900/30 p-4 rounded-lg">
               <p className="text-sm font-medium text-yellow-800 dark:text-yellow-200">
-                💡 Example: You have 100 betting points → You can bet up to 100
-                points on a match
+                💡 Example: Bet 100 points → Win 200 betting points
               </p>
             </div>
           </CardContent>
@@ -122,11 +132,11 @@ export default function HowItWorksPage() {
           <CardContent className="space-y-4">
             <div className="flex items-center gap-2">
               <CheckCircle className="h-4 w-4 text-green-600" />
-              <span>Used to redeem prizes (gaming chairs, laptops)</span>
+              <span>Used to redeem physical prizes</span>
             </div>
             <div className="flex items-center gap-2">
               <CheckCircle className="h-4 w-4 text-green-600" />
-              <span>Earn from winning bets and challenges</span>
+              <span>Earn 50% of your bet as stream points</span>
             </div>
             <div className="flex items-center gap-2">
               <CheckCircle className="h-4 w-4 text-green-600" />
@@ -134,8 +144,7 @@ export default function HowItWorksPage() {
             </div>
             <div className="bg-blue-100 dark:bg-blue-900/30 p-4 rounded-lg">
               <p className="text-sm font-medium text-blue-800 dark:text-blue-200">
-                💡 Example: You have 500 stream points → You can redeem a prize
-                worth 500 points
+                💡 Example: Bet 100 points → Win 50 stream points
               </p>
             </div>
           </CardContent>
@@ -147,14 +156,14 @@ export default function HowItWorksPage() {
         <CardHeader>
           <CardTitle className="flex items-center gap-2 text-green-800 dark:text-green-200">
             <Target className="h-6 w-6" />
-            How Betting Works
+            How Live Betting Works
           </CardTitle>
         </CardHeader>
         <CardContent>
           <div className="grid md:grid-cols-2 gap-8">
             <div>
               <h3 className="font-semibold mb-4 text-green-800 dark:text-green-200">
-                Basic Betting Process
+                Betting Process
               </h3>
               <div className="space-y-3">
                 <div className="flex items-start gap-3">
@@ -162,9 +171,9 @@ export default function HowItWorksPage() {
                     1
                   </div>
                   <div>
-                    <p className="font-medium">Choose a match</p>
+                    <p className="font-medium">Find a live match</p>
                     <p className="text-sm text-muted-foreground">
-                      Select from live tournament matches
+                      Look for matches with "Betting Open" status
                     </p>
                   </div>
                 </div>
@@ -173,9 +182,9 @@ export default function HowItWorksPage() {
                     2
                   </div>
                   <div>
-                    <p className="font-medium">Select a player</p>
+                    <p className="font-medium">Choose your player</p>
                     <p className="text-sm text-muted-foreground">
-                      Pick who you think will win
+                      Pick who you think will win the match
                     </p>
                   </div>
                 </div>
@@ -186,7 +195,7 @@ export default function HowItWorksPage() {
                   <div>
                     <p className="font-medium">Enter bet amount</p>
                     <p className="text-sm text-muted-foreground">
-                      Choose how many points to bet
+                      Choose how many points to wager
                     </p>
                   </div>
                 </div>
@@ -197,7 +206,7 @@ export default function HowItWorksPage() {
                   <div>
                     <p className="font-medium">Wait for result</p>
                     <p className="text-sm text-muted-foreground">
-                      See if your prediction was correct
+                      Watch the match and see if you won
                     </p>
                   </div>
                 </div>
@@ -216,7 +225,7 @@ export default function HowItWorksPage() {
                     </span>
                   </div>
                   <p className="text-sm text-green-700 dark:text-green-300">
-                    Get back your bet + profit (2x your bet) + stream points
+                    Get 2x your bet in betting points + 50% in stream points
                   </p>
                 </div>
                 <div className="bg-red-100 dark:bg-red-900/30 p-4 rounded-lg">
@@ -242,234 +251,69 @@ export default function HowItWorksPage() {
         </CardContent>
       </Card>
 
-      {/* Advanced Features */}
-      <div className="grid lg:grid-cols-2 gap-8 mb-12">
-        {/* Win Streaks */}
-        <Card className="border-2 border-orange-200 bg-gradient-to-r from-orange-50 to-red-50 dark:from-orange-950/20 dark:to-red-950/20 dark:border-orange-800">
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2 text-orange-800 dark:text-orange-200">
-              <Zap className="h-6 w-6" />
-              Win Streak Bonuses
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <p className="text-sm text-muted-foreground mb-4">
-              Build winning streaks to earn bonus stream points on your wins!
-            </p>
-            <div className="space-y-3">
-              <div className="flex items-center justify-between p-3 bg-orange-100 dark:bg-orange-900/30 rounded-lg">
-                <span className="font-medium">3 wins in a row</span>
-                <Badge variant="secondary">+10% bonus</Badge>
-              </div>
-              <div className="flex items-center justify-between p-3 bg-orange-100 dark:bg-orange-900/30 rounded-lg">
-                <span className="font-medium">5 wins in a row</span>
-                <Badge variant="secondary">+25% bonus</Badge>
-              </div>
-              <div className="flex items-center justify-between p-3 bg-orange-100 dark:bg-orange-900/30 rounded-lg">
-                <span className="font-medium">10 wins in a row</span>
-                <Badge variant="secondary">+50% bonus</Badge>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-
-        {/* Risk/Reward */}
-        <Card className="border-2 border-purple-200 bg-gradient-to-r from-purple-50 to-pink-50 dark:from-purple-950/20 dark:to-pink-950/20 dark:border-purple-800">
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2 text-purple-800 dark:text-purple-200">
-              <TrendingUp className="h-6 w-6" />
-              Risk/Reward System
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <p className="text-sm text-muted-foreground mb-4">
-              Bigger bets = more stream points per win!
-            </p>
-            <div className="space-y-3">
-              <div className="flex items-center justify-between p-3 bg-purple-100 dark:bg-purple-900/30 rounded-lg">
-                <span className="font-medium">Bet 50 points</span>
-                <Badge variant="secondary">25 stream points</Badge>
-              </div>
-              <div className="flex items-center justify-between p-3 bg-purple-100 dark:bg-purple-900/30 rounded-lg">
-                <span className="font-medium">Bet 100 points</span>
-                <Badge variant="secondary">50 stream points</Badge>
-              </div>
-              <div className="flex items-center justify-between p-3 bg-purple-100 dark:bg-purple-900/30 rounded-lg">
-                <span className="font-medium">Bet 500 points</span>
-                <Badge variant="secondary">150 stream points</Badge>
-              </div>
-              <div className="flex items-center justify-between p-3 bg-purple-100 dark:bg-purple-900/30 rounded-lg">
-                <span className="font-medium">Bet 1000+ points</span>
-                <Badge variant="secondary">350 stream points</Badge>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-      </div>
-
-      {/* Challenges */}
-      <Card className="mb-8 border-2 border-indigo-200 bg-gradient-to-r from-indigo-50 to-blue-50 dark:from-indigo-950/20 dark:to-blue-950/20 dark:border-indigo-800">
+      {/* V3 Features */}
+      <Card className="mb-8 border-2 border-purple-200 bg-gradient-to-r from-purple-50 to-pink-50 dark:from-purple-950/20 dark:to-pink-950/20 dark:border-purple-800">
         <CardHeader>
-          <CardTitle className="flex items-center gap-2 text-indigo-800 dark:text-indigo-200">
-            <Award className="h-6 w-6" />
-            Daily & Weekly Challenges
+          <CardTitle className="flex items-center gap-2 text-purple-800 dark:text-purple-200">
+            <Zap className="h-6 w-6" />
+            V3 Features
           </CardTitle>
         </CardHeader>
         <CardContent>
-          <div className="grid md:grid-cols-3 gap-6">
-            {/* Daily Challenges */}
+          <div className="grid md:grid-cols-2 gap-8">
             <div>
-              <h3 className="font-semibold mb-4 text-indigo-800 dark:text-indigo-200 flex items-center gap-2">
-                <Calendar className="h-5 w-5" />
-                Daily Challenges
+              <h3 className="font-semibold mb-4 text-purple-800 dark:text-purple-200">
+                Enhanced Betting Experience
               </h3>
               <div className="space-y-3">
-                <div className="bg-indigo-100 dark:bg-indigo-900/30 p-3 rounded-lg">
-                  <p className="font-medium text-sm">Daily Winner</p>
-                  <p className="text-xs text-muted-foreground">
-                    Win 5 bets today
-                  </p>
-                  <Badge variant="secondary" className="mt-1">
-                    100 stream points
-                  </Badge>
+                <div className="flex items-center gap-2">
+                  <CheckCircle className="h-4 w-4 text-green-600" />
+                  <span>Real-time countdown timers</span>
                 </div>
-                <div className="bg-indigo-100 dark:bg-indigo-900/30 p-3 rounded-lg">
-                  <p className="font-medium text-sm">Daily Bettor</p>
-                  <p className="text-xs text-muted-foreground">
-                    Place 10 bets today
-                  </p>
-                  <Badge variant="secondary" className="mt-1">
-                    50 stream points
-                  </Badge>
+                <div className="flex items-center gap-2">
+                  <CheckCircle className="h-4 w-4 text-green-600" />
+                  <span>Dynamic odds calculation</span>
                 </div>
-                <div className="bg-indigo-100 dark:bg-indigo-900/30 p-3 rounded-lg">
-                  <p className="font-medium text-sm">Daily Streak</p>
-                  <p className="text-xs text-muted-foreground">
-                    Win 3 bets in a row today
-                  </p>
-                  <Badge variant="secondary" className="mt-1">
-                    150 stream points
-                  </Badge>
+                <div className="flex items-center gap-2">
+                  <CheckCircle className="h-4 w-4 text-green-600" />
+                  <span>Live betting statistics</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <CheckCircle className="h-4 w-4 text-green-600" />
+                  <span>Enhanced error handling</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <CheckCircle className="h-4 w-4 text-green-600" />
+                  <span>Better mobile responsiveness</span>
                 </div>
               </div>
             </div>
-
-            {/* Weekly Challenges */}
             <div>
-              <h3 className="font-semibold mb-4 text-indigo-800 dark:text-indigo-200 flex items-center gap-2">
-                <Clock className="h-5 w-5" />
-                Weekly Challenges
+              <h3 className="font-semibold mb-4 text-purple-800 dark:text-purple-200">
+                Performance Improvements
               </h3>
               <div className="space-y-3">
-                <div className="bg-indigo-100 dark:bg-indigo-900/30 p-3 rounded-lg">
-                  <p className="font-medium text-sm">Weekly Champion</p>
-                  <p className="text-xs text-muted-foreground">
-                    Win 25 bets this week
-                  </p>
-                  <Badge variant="secondary" className="mt-1">
-                    500 stream points
-                  </Badge>
+                <div className="flex items-center gap-2">
+                  <CheckCircle className="h-4 w-4 text-green-600" />
+                  <span>Faster loading times</span>
                 </div>
-                <div className="bg-indigo-100 dark:bg-indigo-900/30 p-3 rounded-lg">
-                  <p className="font-medium text-sm">Weekly Gambler</p>
-                  <p className="text-xs text-muted-foreground">
-                    Place 50 bets this week
-                  </p>
-                  <Badge variant="secondary" className="mt-1">
-                    200 stream points
-                  </Badge>
+                <div className="flex items-center gap-2">
+                  <CheckCircle className="h-4 w-4 text-green-600" />
+                  <span>Optimized database queries</span>
                 </div>
-                <div className="bg-indigo-100 dark:bg-indigo-900/30 p-3 rounded-lg">
-                  <p className="font-medium text-sm">Weekly Streak Master</p>
-                  <p className="text-xs text-muted-foreground">
-                    Win 10 bets in a row this week
-                  </p>
-                  <Badge variant="secondary" className="mt-1">
-                    1000 stream points
-                  </Badge>
+                <div className="flex items-center gap-2">
+                  <CheckCircle className="h-4 w-4 text-green-600" />
+                  <span>Better caching strategies</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <CheckCircle className="h-4 w-4 text-green-600" />
+                  <span>Improved real-time updates</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <CheckCircle className="h-4 w-4 text-green-600" />
+                  <span>Enhanced user feedback</span>
                 </div>
               </div>
-            </div>
-
-            {/* Achievement Challenges */}
-            <div>
-              <h3 className="font-semibold mb-4 text-indigo-800 dark:text-indigo-200 flex items-center gap-2">
-                <Star className="h-5 w-5" />
-                Achievements
-              </h3>
-              <div className="space-y-3">
-                <div className="bg-indigo-100 dark:bg-indigo-900/30 p-3 rounded-lg">
-                  <p className="font-medium text-sm">First Win</p>
-                  <p className="text-xs text-muted-foreground">
-                    Win your first bet
-                  </p>
-                  <Badge variant="secondary" className="mt-1">
-                    50 stream points
-                  </Badge>
-                </div>
-                <div className="bg-indigo-100 dark:bg-indigo-900/30 p-3 rounded-lg">
-                  <p className="font-medium text-sm">Betting Pro</p>
-                  <p className="text-xs text-muted-foreground">
-                    Place 100 bets total
-                  </p>
-                  <Badge variant="secondary" className="mt-1">
-                    500 stream points
-                  </Badge>
-                </div>
-                <div className="bg-indigo-100 dark:bg-indigo-900/30 p-3 rounded-lg">
-                  <p className="font-medium text-sm">Win Streak Legend</p>
-                  <p className="text-xs text-muted-foreground">
-                    Win 20 bets in a row
-                  </p>
-                  <Badge variant="secondary" className="mt-1">
-                    2000 stream points
-                  </Badge>
-                </div>
-              </div>
-            </div>
-          </div>
-        </CardContent>
-      </Card>
-
-      {/* Tournament Bonuses */}
-      <Card className="mb-8 border-2 border-amber-200 bg-gradient-to-r from-amber-50 to-yellow-50 dark:from-amber-950/20 dark:to-yellow-950/20 dark:border-amber-800">
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2 text-amber-800 dark:text-amber-200">
-            <Crown className="h-6 w-6" />
-            Tournament Bonuses
-          </CardTitle>
-        </CardHeader>
-        <CardContent>
-          <p className="text-sm text-muted-foreground mb-6">
-            Participate in tournaments for extra stream points rewards!
-          </p>
-          <div className="grid md:grid-cols-3 gap-6">
-            <div className="text-center">
-              <div className="bg-amber-100 dark:bg-amber-900/30 w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-4">
-                <Crown className="h-8 w-8 text-amber-600" />
-              </div>
-              <h3 className="font-semibold mb-2">Winner</h3>
-              <Badge variant="secondary" className="text-lg">
-                +500 stream points
-              </Badge>
-            </div>
-            <div className="text-center">
-              <div className="bg-amber-100 dark:bg-amber-900/30 w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-4">
-                <Award className="h-8 w-8 text-amber-600" />
-              </div>
-              <h3 className="font-semibold mb-2">Runner-up</h3>
-              <Badge variant="secondary" className="text-lg">
-                +250 stream points
-              </Badge>
-            </div>
-            <div className="text-center">
-              <div className="bg-amber-100 dark:bg-amber-900/30 w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-4">
-                <Users className="h-8 w-8 text-amber-600" />
-              </div>
-              <h3 className="font-semibold mb-2">Participation</h3>
-              <Badge variant="secondary" className="text-lg">
-                +50 stream points
-              </Badge>
             </div>
           </div>
         </CardContent>
@@ -497,7 +341,7 @@ export default function HowItWorksPage() {
                   <div>
                     <p className="font-medium">Earn stream points</p>
                     <p className="text-sm text-muted-foreground">
-                      Win bets and complete challenges
+                      Win bets to accumulate stream points
                     </p>
                   </div>
                 </div>
@@ -508,7 +352,7 @@ export default function HowItWorksPage() {
                   <div>
                     <p className="font-medium">Visit Prizes section</p>
                     <p className="text-sm text-muted-foreground">
-                      Go to your profile and select prizes
+                      Go to the Prizes page in the navigation
                     </p>
                   </div>
                 </div>
@@ -519,7 +363,7 @@ export default function HowItWorksPage() {
                   <div>
                     <p className="font-medium">Select and redeem</p>
                     <p className="text-sm text-muted-foreground">
-                      Choose your prize and confirm
+                      Choose your prize and confirm redemption
                     </p>
                   </div>
                 </div>
@@ -530,7 +374,7 @@ export default function HowItWorksPage() {
                   <div>
                     <p className="font-medium">Receive your prize</p>
                     <p className="text-sm text-muted-foreground">
-                      We'll collect shipping details
+                      We'll collect shipping details and send your prize
                     </p>
                   </div>
                 </div>
@@ -538,7 +382,7 @@ export default function HowItWorksPage() {
             </div>
             <div>
               <h3 className="font-semibold mb-4 text-emerald-800 dark:text-emerald-200">
-                Example Prizes
+                Available Prizes
               </h3>
               <div className="space-y-3">
                 <div className="bg-emerald-100 dark:bg-emerald-900/30 p-3 rounded-lg">
@@ -594,9 +438,9 @@ export default function HowItWorksPage() {
                     2
                   </div>
                   <div>
-                    <p className="font-medium">Build streaks</p>
+                    <p className="font-medium">Watch live matches</p>
                     <p className="text-sm text-muted-foreground">
-                      Focus on building win streaks for bonus points
+                      Observe players before placing bets
                     </p>
                   </div>
                 </div>
@@ -605,9 +449,9 @@ export default function HowItWorksPage() {
                     3
                   </div>
                   <div>
-                    <p className="font-medium">Complete challenges</p>
+                    <p className="font-medium">Focus on stream points</p>
                     <p className="text-sm text-muted-foreground">
-                      Daily and weekly challenges give great rewards
+                      Stream points are for real prizes
                     </p>
                   </div>
                 </div>
@@ -616,9 +460,9 @@ export default function HowItWorksPage() {
                     4
                   </div>
                   <div>
-                    <p className="font-medium">Participate in tournaments</p>
+                    <p className="font-medium">Check betting times</p>
                     <p className="text-sm text-muted-foreground">
-                      Tournament bonuses are significant
+                      Betting closes before matches start
                     </p>
                   </div>
                 </div>
@@ -687,7 +531,7 @@ export default function HowItWorksPage() {
           </h2>
           <p className="text-lg text-muted-foreground mb-8 max-w-2xl mx-auto">
             Now that you understand how Bolobey works, it's time to start
-            betting, earning points, and winning amazing prizes!
+            betting, earning stream points, and winning amazing prizes!
           </p>
           <div className="flex flex-col sm:flex-row gap-4 justify-center">
             <Link href="/tournaments">
@@ -696,14 +540,14 @@ export default function HowItWorksPage() {
                 View Tournaments
               </Button>
             </Link>
-            <Link href="/profile">
+            <Link href="/">
               <Button
                 size="lg"
                 variant="outline"
                 className="border-purple-600 text-purple-600 hover:bg-purple-600 hover:text-white"
               >
-                <Gamepad2 className="h-5 w-5 mr-2" />
-                Start Playing
+                <Home className="h-5 w-5 mr-2" />
+                Back to Home
               </Button>
             </Link>
           </div>

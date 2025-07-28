@@ -15,6 +15,7 @@ import {
   Menu,
   Gift,
   BarChart3,
+  BookOpen,
 } from "lucide-react";
 import { EnhancedNotifications } from "@/components/enhanced-notifications";
 import { UserPointsDisplay } from "@/components/user-points-display";
@@ -104,10 +105,10 @@ export function Navigation() {
             <motion.div whileHover={{ y: -2 }} transition={{ duration: 0.2 }}>
               <Link
                 href="/how-it-works"
-                className="text-sm font-medium text-foreground/60 transition-colors hover:text-foreground flex items-center gap-1"
+                className="flex items-center gap-2 px-3 py-2 text-sm rounded-md hover:bg-accent hover:text-accent-foreground transition-colors"
               >
-                <BarChart3 className="h-4 w-4" />
-                How It Works
+                <BookOpen className="h-4 w-4" />
+                Guide
               </Link>
             </motion.div>
           </div>
@@ -289,7 +290,7 @@ export function Navigation() {
                       onClick={handleMobileLinkClick}
                     >
                       <BarChart3 className="mr-3 h-4 w-4" />
-                      How It Works
+                      Guide
                     </Link>
                   </div>
 
