@@ -99,7 +99,13 @@ export default function StreamingControlPage() {
   const [showParticipantSelector, setShowParticipantSelector] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState("");
-  const [spectatorCount, setSpectatorCount] = useState({ active_spectators: 0 });
+  const [spectatorCount, setSpectatorCount] = useState({
+    active_spectators: 0,
+  });
+  const [overlayUrl, setOverlayUrl] = useState("");
+  const [currentMatch, setCurrentMatch] = useState<Match | null>(null);
+  const [copied, setCopied] = useState(false);
+  const [showStopConfirm, setShowStopConfirm] = useState(false);
 
   const getParticipantDisplayName = (participant: Participant): string => {
     return participant.user.display_name || "Unknown Player";
@@ -128,7 +134,7 @@ export default function StreamingControlPage() {
 
         // Set overlay URL
         const baseUrl = window.location.origin;
-        // setOverlayUrl(`${baseUrl}/streaming-overlay/${tournamentId}`); // This line was removed as per the new_code
+        setOverlayUrl(`${baseUrl}/streaming-overlay/${tournamentId}`);
       } catch (error) {
         console.error("Error fetching tournament:", error);
       }
@@ -156,7 +162,7 @@ export default function StreamingControlPage() {
         const activeMatch = data?.find(
           (match) => match.status === "in_progress"
         );
-        // setCurrentMatch(activeMatch || null); // This line was removed as per the new_code
+        setCurrentMatch(activeMatch || null);
       } catch (error) {
         console.error("Error fetching matches:", error);
       }
@@ -173,7 +179,7 @@ export default function StreamingControlPage() {
     const fetchParticipants = async () => {
       try {
         console.log("Fetching participants for tournament:", tournamentId);
-        
+
         const { data, error } = await supabase
           .from("tournament_participants")
           .select("*")
@@ -188,7 +194,7 @@ export default function StreamingControlPage() {
         if (data && data.length > 0) {
           const userIds = data.map((p) => p.user_id);
           console.log("User IDs to fetch:", userIds);
-          
+
           const { data: users, error: usersError } = await supabase
             .from("users")
             .select("id, display_name, avatar_url")
@@ -286,11 +292,12 @@ export default function StreamingControlPage() {
       if (error) throw error;
 
       // Transform the data to include player names (using user_id as fallback)
-      const transformedData = data?.map((match) => ({
-        ...match,
-        player1_name: match.player1_id || "Unknown Player",
-        player2_name: match.player2_id || "Unknown Player",
-      })) || [];
+      const transformedData =
+        data?.map((match) => ({
+          ...match,
+          player1_name: match.player1_id || "Unknown Player",
+          player2_name: match.player2_id || "Unknown Player",
+        })) || [];
 
       setMatches(transformedData);
     } catch (error) {
@@ -350,9 +357,9 @@ export default function StreamingControlPage() {
   // Copy overlay URL
   const copyOverlayUrl = async () => {
     try {
-      // await navigator.clipboard.writeText(overlayUrl); // This line was removed as per the new_code
-      // setCopied(true); // This line was removed as per the new_code
-      // setTimeout(() => setCopied(false), 2000); // This line was removed as per the new_code
+      await navigator.clipboard.writeText(overlayUrl);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
     } catch (error) {
       console.error("Error copying URL:", error);
     }
@@ -619,16 +626,16 @@ export default function StreamingControlPage() {
                 <Label>Overlay URL for OBS</Label>
                 <div className="flex gap-2">
                   <Input
-                    // value={overlayUrl} // This line was removed as per the new_code
+                    value={overlayUrl}
                     readOnly
                     className="font-mono text-sm"
                   />
                   <Button onClick={copyOverlayUrl} variant="outline" size="sm">
-                    {/* {copied ? ( // This line was removed as per the new_code
+                    {copied ? (
                       <CheckCircle className="h-4 w-4" />
                     ) : (
                       <Copy className="h-4 w-4" />
-                    )} */}
+                    )}
                   </Button>
                 </div>
                 <p className="text-xs text-muted-foreground">
@@ -649,7 +656,7 @@ export default function StreamingControlPage() {
               </div>
 
               <Button
-                onClick={() => window.open(/* overlayUrl */ "", "_blank")}
+                onClick={() => window.open(overlayUrl, "_blank")}
                 className="w-full"
                 variant="outline"
               >
@@ -671,7 +678,9 @@ export default function StreamingControlPage() {
               <div className="grid grid-cols-2 gap-4">
                 <div className="text-center p-4 bg-muted rounded-lg">
                   <Users className="h-8 w-8 mx-auto mb-2 text-blue-500" />
-                  <p className="text-2xl font-bold">{spectatorCount.active_spectators}</p>
+                  <p className="text-2xl font-bold">
+                    {spectatorCount.active_spectators}
+                  </p>
                   <p className="text-sm text-muted-foreground">Spectators</p>
                 </div>
                 <div className="text-center p-4 bg-muted rounded-lg">
@@ -686,11 +695,11 @@ export default function StreamingControlPage() {
               <div className="space-y-2">
                 <div className="flex items-center justify-between">
                   <span className="text-sm font-medium">Current Match:</span>
-                  {/* <Badge variant={currentMatch ? "default" : "secondary"}> // This line was removed as per the new_code
+                  <Badge variant={currentMatch ? "default" : "secondary"}>
                     {currentMatch ? "Active" : "None"}
-                  </Badge> */}
+                  </Badge>
                 </div>
-                {/* {currentMatch && ( // This line was removed as per the new_code
+                {currentMatch && (
                   <div className="p-3 bg-muted rounded-lg">
                     <p className="font-medium">
                       {currentMatch.player1_name} vs {currentMatch.player2_name}
@@ -700,14 +709,14 @@ export default function StreamingControlPage() {
                       {currentMatch.match_number}
                     </p>
                   </div>
-                )} */}
+                )}
               </div>
             </CardContent>
           </Card>
         </div>
 
         {/* Current Match Control */}
-        {/* {currentMatch && ( // This line was removed as per the new_code
+        {currentMatch && (
           <Card className="mt-8">
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
@@ -777,28 +786,27 @@ export default function StreamingControlPage() {
                       onClick={() =>
                         updateMatchScore(
                           currentMatch.id,
-                          Math.max(0, currentMatch.player1_score - 1),
+                          currentMatch.player1_score + 1,
                           currentMatch.player2_score
                         )
                       }
-                      // disabled={isUpdating} // This line was removed as per the new_code
                       variant="outline"
                       size="sm"
                     >
-                      -1
+                      +1
                     </Button>
                     <Button
                       onClick={() =>
                         updateMatchScore(
                           currentMatch.id,
-                          currentMatch.player1_score + 1,
+                          currentMatch.player1_score - 1,
                           currentMatch.player2_score
                         )
                       }
-                      // disabled={isUpdating} // This line was removed as per the new_code
+                      variant="outline"
                       size="sm"
                     >
-                      +1
+                      -1
                     </Button>
                   </div>
                 </div>
@@ -822,48 +830,33 @@ export default function StreamingControlPage() {
                         updateMatchScore(
                           currentMatch.id,
                           currentMatch.player1_score,
-                          Math.max(0, currentMatch.player2_score - 1)
+                          currentMatch.player2_score + 1
                         )
                       }
-                      // disabled={isUpdating} // This line was removed as per the new_code
                       variant="outline"
                       size="sm"
                     >
-                      -1
+                      +1
                     </Button>
                     <Button
                       onClick={() =>
                         updateMatchScore(
                           currentMatch.id,
                           currentMatch.player1_score,
-                          currentMatch.player2_score + 1
+                          currentMatch.player2_score - 1
                         )
                       }
-                      // disabled={isUpdating} // This line was removed as per the new_code
+                      variant="outline"
                       size="sm"
                     >
-                      +1
+                      -1
                     </Button>
                   </div>
                 </div>
               </div>
-
-              {/* Winner Announcement */}
-              {/* {(currentMatch.player1_score >= 3 || // This line was removed as per the new_code
-                currentMatch.player2_score >= 3) && ( */}
-                <div className="text-center mt-6 p-4 bg-green-50 dark:bg-green-950/20 rounded-xl border border-green-200 dark:border-green-800">
-                  <Trophy className="h-8 w-8 mx-auto mb-2 text-yellow-500" />
-                  <h3 className="text-xl font-bold text-green-600 dark:text-green-400">
-                    {/* {currentMatch.player1_score >= 3 // This line was removed as per the new_code
-                      ? currentMatch.player1_name
-                      : currentMatch.player2_name}{" "} */}
-                    WINS!
-                  </h3>
-                </div>
-              {/* )} */}
             </CardContent>
           </Card>
-        )} */}
+        )}
 
         {/* Participant Selector */}
         <Card className="mt-8">
@@ -1055,7 +1048,7 @@ export default function StreamingControlPage() {
         </Card>
 
         {/* Stop Match Confirmation Dialog */}
-        {/* <Dialog open={showStopConfirm} onOpenChange={setShowStopConfirm}> // This line was removed as per the new_code
+        <Dialog open={showStopConfirm} onOpenChange={setShowStopConfirm}>
           <DialogContent>
             <DialogHeader>
               <DialogTitle>Stop Current Match?</DialogTitle>
@@ -1082,7 +1075,7 @@ export default function StreamingControlPage() {
               </Button>
             </DialogFooter>
           </DialogContent>
-        </Dialog> */}
+        </Dialog>
       </div>
     </div>
   );

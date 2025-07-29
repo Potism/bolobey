@@ -95,6 +95,8 @@ export default function TournamentManagePage() {
             userIds.push(data.created_by);
           }
 
+          console.log("Fetching users for participant IDs:", userIds);
+
           const { data: users, error: usersError } = await supabase
             .from("users")
             .select("id, display_name, avatar_url")
@@ -103,6 +105,8 @@ export default function TournamentManagePage() {
           if (usersError) {
             console.warn("Error fetching users:", usersError);
           }
+
+          console.log("Users fetched:", users);
 
           // Create a map of user_id to user data
           const userMap = new Map();
@@ -120,7 +124,11 @@ export default function TournamentManagePage() {
             const user = userMap.get(p.user_id);
             return {
               ...p,
-              user: { display_name: user?.display_name || "Unknown Player" },
+              user: user || {
+                id: p.user_id,
+                display_name: "Unknown Player",
+                avatar_url: null,
+              },
             };
           });
         } else {
