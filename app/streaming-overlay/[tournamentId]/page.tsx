@@ -15,7 +15,7 @@ interface Tournament {
   stream_url?: string;
 }
 
-interface RawMatch {
+interface Match {
   id: string;
   tournament_id: string;
   phase_id: string;
@@ -27,6 +27,7 @@ interface RawMatch {
   round: number;
   match_number: number;
   bracket_type: string;
+  created_at: string;
   player1?: {
     id: string;
     display_name: string;
@@ -39,11 +40,6 @@ interface RawMatch {
   };
 }
 
-interface Match extends RawMatch {
-  player1_name: string;
-  player2_name: string;
-}
-
 export default function StreamingOverlayPage() {
   const params = useParams();
   const tournamentId = params.tournamentId as string;
@@ -52,30 +48,6 @@ export default function StreamingOverlayPage() {
   const [currentMatch, setCurrentMatch] = useState<Match | null>(null);
   const [spectatorCount, setSpectatorCount] = useState(0);
   const [isLoading, setIsLoading] = useState(true);
-
-  // Memoized query selector for consistent joins
-  const matchQuerySelector = useMemo(
-    () => `
-    *,
-    player1:users!matches_player1_id_fkey(id, display_name, avatar_url),
-    player2:users!matches_player2_id_fkey(id, display_name, avatar_url)
-  `,
-    []
-  );
-
-  // Optimized data transformation function
-  const transformMatchData = useCallback(
-    (data: RawMatch | null): Match | null => {
-      if (!data) return null;
-
-      return {
-        ...data,
-        player1_name: data.player1?.display_name || "Unknown Player",
-        player2_name: data.player2?.display_name || "Unknown Player",
-      };
-    },
-    []
-  );
 
   // Fetch tournament data
   useEffect(() => {
@@ -102,51 +74,91 @@ export default function StreamingOverlayPage() {
   // Optimized function to fetch current match
   const fetchCurrentMatch = useCallback(async () => {
     try {
-      // Single optimized query with proper status priority
-      const { data, error } = await supabase
+      console.log("Fetching current match for tournament:", tournamentId);
+
+      // First, get all matches for this tournament
+      const { data: matchesData, error: matchesError } = await supabase
         .from("matches")
-        .select(matchQuerySelector)
+        .select("*")
         .eq("tournament_id", tournamentId)
-        .in("status", ["in_progress", "active"])
-        .order("status", { ascending: false }) // in_progress first
-        .order("created_at", { ascending: false })
-        .limit(1)
-        .single();
+        .order("created_at", { ascending: false });
 
-      if (error && error.code === "PGRST116") {
-        // Fallback: get most recent match for debugging
-        const { data: recentData } = await supabase
-          .from("matches")
-          .select(matchQuerySelector)
-          .eq("tournament_id", tournamentId)
-          .order("created_at", { ascending: false })
-          .limit(1)
-          .single();
+      if (matchesError) {
+        console.error("Error fetching matches:", matchesError);
+        return;
+      }
 
-        if (recentData) {
-          console.log("Debug: Most recent match found:", recentData);
-          const transformedMatch = transformMatchData(recentData);
-          setCurrentMatch(transformedMatch);
-          return;
+      console.log("All matches:", matchesData);
+
+      // Find the active match
+      const activeMatch = matchesData?.find(
+        (match) => match.status === "in_progress"
+      );
+
+      if (activeMatch) {
+        console.log("Found active match:", activeMatch);
+
+        // Get user data for the players
+        const playerIds = [
+          activeMatch.player1_id,
+          activeMatch.player2_id,
+        ].filter(Boolean);
+
+        if (playerIds.length > 0) {
+          const { data: usersData, error: usersError } = await supabase
+            .from("users")
+            .select("id, display_name, avatar_url")
+            .in("id", playerIds);
+
+          if (usersError) {
+            console.error("Error fetching users:", usersError);
+          } else {
+            console.log("Users data:", usersData);
+
+            // Create a map for quick lookup
+            const userMap = new Map();
+            if (usersData) {
+              usersData.forEach((user) => userMap.set(user.id, user));
+            }
+
+            // Combine match with user data
+            const matchWithUsers = {
+              ...activeMatch,
+              player1: userMap.get(activeMatch.player1_id)
+                ? {
+                    id: activeMatch.player1_id,
+                    display_name: userMap.get(activeMatch.player1_id)
+                      ?.display_name,
+                    avatar_url: userMap.get(activeMatch.player1_id)?.avatar_url,
+                  }
+                : undefined,
+              player2: userMap.get(activeMatch.player2_id)
+                ? {
+                    id: activeMatch.player2_id,
+                    display_name: userMap.get(activeMatch.player2_id)
+                      ?.display_name,
+                    avatar_url: userMap.get(activeMatch.player2_id)?.avatar_url,
+                  }
+                : undefined,
+            };
+
+            console.log("Match with users:", matchWithUsers);
+            setCurrentMatch(matchWithUsers as Match);
+            return;
+          }
         }
-      }
 
-      if (error && error.code !== "PGRST116") {
-        console.error("Error fetching current match:", error);
-      }
-
-      const transformedMatch = transformMatchData(data);
-      setCurrentMatch(transformedMatch);
-
-      if (transformedMatch) {
-        console.log("Current match found:", transformedMatch);
+        // If we can't get user data, still set the match
+        setCurrentMatch(activeMatch as Match);
       } else {
-        console.log("No active match found for tournament:", tournamentId);
+        console.log("No active match found");
+        setCurrentMatch(null);
       }
     } catch (error) {
       console.error("Error fetching current match:", error);
+      setCurrentMatch(null);
     }
-  }, [tournamentId, matchQuerySelector, transformMatchData]);
+  }, [tournamentId]);
 
   // Optimized spectator count fetching
   const fetchSpectatorCount = useCallback(async () => {
@@ -187,8 +199,8 @@ export default function StreamingOverlayPage() {
         },
         (payload) => {
           console.log("Match change detected:", payload);
-          // Debounced refresh to prevent rapid updates
-          setTimeout(() => fetchCurrentMatch(), 100);
+          // Immediate refresh for better responsiveness
+          fetchCurrentMatch();
         }
       )
       .on(
@@ -283,7 +295,7 @@ export default function StreamingOverlayPage() {
                     <div className="text-center">
                       <div className="bg-gradient-to-r from-blue-500/20 to-blue-600/20 rounded-lg px-6 py-3 border border-blue-400/30">
                         <h3 className="text-white font-bold text-lg mb-1">
-                          {currentMatch.player1_name}
+                          {currentMatch.player1?.display_name || "Player 1"}
                         </h3>
                         <motion.div
                           key={currentMatch.player1_score}
@@ -313,7 +325,7 @@ export default function StreamingOverlayPage() {
                     <div className="text-center">
                       <div className="bg-gradient-to-r from-red-500/20 to-red-600/20 rounded-lg px-6 py-3 border border-red-400/30">
                         <h3 className="text-white font-bold text-lg mb-1">
-                          {currentMatch.player2_name}
+                          {currentMatch.player2?.display_name || "Player 2"}
                         </h3>
                         <motion.div
                           key={currentMatch.player2_score}

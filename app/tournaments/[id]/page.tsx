@@ -80,7 +80,7 @@ interface Participant {
   id: string;
   user_id: string;
   tournament_id: string;
-  username: string;
+  display_name: string;
   avatar_url?: string;
   created_at: string;
 }
@@ -108,34 +108,6 @@ interface FormattedMatch {
   };
   startTime?: Date;
   endTime?: Date;
-}
-
-interface ParticipantData {
-  id: string;
-  user_id: string;
-  tournament_id: string;
-  username: string;
-  avatar_url?: string;
-  created_at: string;
-  users?: {
-    display_name: string;
-    avatar_url?: string;
-  };
-}
-
-interface MatchData {
-  id: string;
-  tournament_id: string;
-  player1_id: string;
-  player2_id: string;
-  player1_score: number;
-  player2_score: number;
-  status: string;
-  round: number;
-  match_number: number;
-  winner_id?: string;
-  start_time?: string;
-  end_time?: string;
 }
 
 export default function TournamentPage() {
@@ -199,23 +171,15 @@ export default function TournamentPage() {
     fetchCurrentUser();
   }, [fetchCurrentUser]);
 
-  // Simple tournament data fetching without complex retry logic
-  const [tournamentData, setTournamentData] = useState<{
-    tournament: Tournament | null;
-    participants: Participant[];
-    matches: Match[];
-  } | null>(null);
-  const [dataLoading, setDataLoading] = useState(true);
-  const [dataError, setDataError] = useState<Error | null>(null);
-
+  // FIXED: Better participant fetching with separate queries (no foreign key relationship)
   const fetchTournamentData = useCallback(async () => {
     if (!tournamentId) return;
 
-    setDataLoading(true);
-    setDataError(null);
+    setLoading(true);
+    setError(null);
 
     try {
-      // Fetch tournament data first (most critical)
+      // Fetch tournament data first
       const tournamentResult = await supabaseClient
         .from("tournaments")
         .select("*")
@@ -229,97 +193,118 @@ export default function TournamentPage() {
         );
       }
 
-      // Fetch participants and matches in parallel (less critical)
-      const [participantsResult, matchesResult] = await Promise.allSettled([
-        supabaseClient
+      // FIXED: Fetch participants first, then users separately
+      const { data: participantsData, error: participantsError } =
+        await supabaseClient
           .from("tournament_participants")
           .select("*")
-          .eq("tournament_id", tournamentId),
-        supabaseClient
-          .from("matches")
-          .select("*")
-          .eq("tournament_id", tournamentId)
-          .order("round", { ascending: true })
-          .order("match_number", { ascending: true }),
-      ]);
+          .eq("tournament_id", tournamentId);
 
-      // Handle participants result
-      let formattedParticipants: ParticipantData[] = [];
-      if (
-        participantsResult.status === "fulfilled" &&
-        !participantsResult.value.error
-      ) {
-        const participants = participantsResult.value.data || [];
+      console.log(
+        "🔍 PARTICIPANT DEBUG: Raw participants data:",
+        participantsData
+      );
+      console.log(
+        "🔍 PARTICIPANT DEBUG: Participants error:",
+        participantsError
+      );
 
-        // Fetch user information for all participants
-        if (participants.length > 0) {
-          const userIds = participants.map((p) => p.user_id);
-          console.log("Fetching users for participant IDs:", userIds);
+      if (participantsError) {
+        console.error("Error fetching participants:", participantsError);
+        throw new Error(
+          `Failed to fetch participants: ${participantsError.message}`
+        );
+      }
 
-          const { data: users, error: usersError } = await supabaseClient
-            .from("users")
-            .select("id, display_name, avatar_url")
-            .in("id", userIds);
+      // Fetch user information for all participants
+      let formattedParticipants: Participant[] = [];
+      if (participantsData && participantsData.length > 0) {
+        const userIds = participantsData.map((p) => p.user_id);
+        console.log("🔍 PARTICIPANT DEBUG: Fetching users for IDs:", userIds);
 
-          console.log("Users fetch result:", { users, usersError });
+        const { data: users, error: usersError } = await supabaseClient
+          .from("users")
+          .select("id, display_name, avatar_url")
+          .in("id", userIds);
 
-          if (usersError) {
-            console.warn("Error fetching users:", usersError);
-          }
+        console.log("🔍 PARTICIPANT DEBUG: Users fetch result:", {
+          usersCount: users?.length || 0,
+          usersError: usersError?.message || null,
+          users: users,
+        });
 
-          // Create a map of user_id to user data
-          const userMap = new Map();
-          if (users) {
-            users.forEach((user) => userMap.set(user.id, user));
-          }
-
-          console.log("User map created:", Array.from(userMap.entries()));
-
-          // Map participants with user data
-          formattedParticipants = participants.map((p) => {
-            const user = userMap.get(p.user_id);
-            console.log(`Mapping participant ${p.user_id}:`, {
-              user,
-              fallback: !user,
-            });
-            return {
-              id: p.id,
-              user_id: p.user_id,
-              tournament_id: p.tournament_id,
-              username: user?.display_name || "Unknown Player",
-              avatar_url: user?.avatar_url,
-              created_at: p.joined_at || p.created_at,
-            };
-          });
-
-          console.log("Formatted participants:", formattedParticipants);
+        if (usersError) {
+          console.warn(
+            "⚠️ PARTICIPANT DEBUG: Error fetching users:",
+            usersError
+          );
         }
-      } else {
-        console.warn("Participants fetch failed:", participantsResult);
+
+        // Create a map of user_id to user data
+        const userMap = new Map();
+        if (users) {
+          users.forEach((user) => userMap.set(user.id, user));
+        }
+
+        console.log("🔍 PARTICIPANT DEBUG: User map created:", {
+          mapSize: userMap.size,
+          mapEntries: Array.from(userMap.entries()),
+        });
+
+        // Map participants with user data
+        formattedParticipants = participantsData.map((p) => {
+          const user = userMap.get(p.user_id);
+          console.log(`🔍 PARTICIPANT DEBUG: Mapping ${p.user_id}:`, {
+            found: !!user,
+            displayName: user?.display_name || "Unknown Player",
+            userMapHasKey: userMap.has(p.user_id),
+          });
+          return {
+            id: p.id,
+            user_id: p.user_id,
+            tournament_id: p.tournament_id,
+            display_name: user?.display_name || "Unknown Player",
+            avatar_url: user?.avatar_url,
+            created_at: p.created_at,
+          };
+        });
+
+        console.log(
+          "🔍 PARTICIPANT DEBUG: Final formatted participants:",
+          formattedParticipants
+        );
       }
 
-      // Handle matches result
-      let matches: MatchData[] = [];
-      if (matchesResult.status === "fulfilled" && !matchesResult.value.error) {
-        matches = matchesResult.value.data || [];
-      } else {
-        console.warn("Matches fetch failed:", matchesResult);
+      // Fetch matches
+      const { data: matchesData, error: matchesError } = await supabaseClient
+        .from("matches")
+        .select("*")
+        .eq("tournament_id", tournamentId)
+        .order("round", { ascending: true })
+        .order("match_number", { ascending: true });
+
+      if (matchesError) {
+        console.warn("Matches fetch failed:", matchesError);
       }
 
-      const data = {
-        tournament: tournamentResult.data,
-        participants: formattedParticipants,
-        matches: matches,
-      };
+      // Update state with the fetched data
+      setTournament(tournamentResult.data);
+      setParticipants(formattedParticipants);
+      setMatches(matchesData || []);
 
-      setTournamentData(data);
+      // Fetch tournament type if available
+      if (tournamentResult.data?.tournament_type_id) {
+        fetchTournamentType(tournamentResult.data.tournament_type_id);
+      }
     } catch (error) {
       console.error("Tournament data fetch error:", error);
-      setDataError(error as Error);
+      setError(
+        error instanceof Error ? error.message : "Failed to load tournament"
+      );
     } finally {
-      setDataLoading(false);
+      setLoading(false);
     }
-  }, [tournamentId, supabaseClient]);
+  }, [tournamentId, supabaseClient, fetchTournamentType]);
 
   // Fetch data on mount and when tournamentId changes
   useEffect(() => {
@@ -329,34 +314,6 @@ export default function TournamentPage() {
   const refetch = useCallback(() => {
     fetchTournamentData();
   }, [fetchTournamentData]);
-
-  // Update state when optimized data is available
-  useEffect(() => {
-    if (tournamentData) {
-      setTournament(tournamentData.tournament);
-      setParticipants(tournamentData.participants);
-      setMatches(tournamentData.matches);
-
-      // Fetch tournament type if available
-      if (tournamentData.tournament?.tournament_type_id) {
-        fetchTournamentType(tournamentData.tournament.tournament_type_id);
-      }
-
-      setLoading(false);
-    }
-  }, [tournamentData, fetchTournamentType]);
-
-  // Update loading state
-  useEffect(() => {
-    setLoading(dataLoading);
-  }, [dataLoading]);
-
-  // Update error state
-  useEffect(() => {
-    if (dataError) {
-      setError(dataError.message);
-    }
-  }, [dataError]);
 
   // Optimized match formatting with useMemo
   const formattedMatches = useMemo((): FormattedMatch[] => {
@@ -374,7 +331,7 @@ export default function TournamentPage() {
         player1: player1
           ? {
               id: player1.user_id,
-              name: player1.username,
+              name: player1.display_name,
               score: match.player1_score,
               avatar: player1.avatar_url,
             }
@@ -387,7 +344,7 @@ export default function TournamentPage() {
         player2: player2
           ? {
               id: player2.user_id,
-              name: player2.username,
+              name: player2.display_name,
               score: match.player2_score,
               avatar: player2.avatar_url,
             }
@@ -401,7 +358,7 @@ export default function TournamentPage() {
         winner: winner
           ? {
               id: winner.user_id,
-              name: winner.username,
+              name: winner.display_name,
             }
           : undefined,
         startTime: match.start_time ? new Date(match.start_time) : undefined,
@@ -521,7 +478,7 @@ export default function TournamentPage() {
             <div className="text-center">
               <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary mx-auto mb-4"></div>
               <p className="text-muted-foreground">Loading tournament...</p>
-              {dataError && (
+              {error && (
                 <div className="mt-4">
                   <p className="text-sm text-red-500 mb-2">
                     Loading failed. Please try again.
@@ -625,7 +582,7 @@ export default function TournamentPage() {
                         variant="outline"
                         className="text-xs"
                       >
-                        {participant.username}
+                        {participant.display_name}
                       </Badge>
                     ))}
                   </div>

@@ -1,7 +1,7 @@
 "use client";
 
-import { useState, useEffect } from "react";
-import { useParams, useRouter } from "next/navigation";
+import { useState, useEffect, useCallback, useMemo } from "react";
+import { useParams } from "next/navigation";
 import { useAuth } from "@/lib/hooks/useAuth";
 import { supabase } from "@/lib/supabase";
 import { Navigation } from "@/components/navigation";
@@ -23,20 +23,25 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import {
   Trophy,
   Target,
   Users,
-  Play,
   Settings,
   ExternalLink,
   Copy,
   RefreshCw,
-  Eye,
-  EyeOff,
   Monitor,
   Zap,
   CheckCircle,
   AlertCircle,
+  Award,
 } from "lucide-react";
 
 interface Tournament {
@@ -45,6 +50,8 @@ interface Tournament {
   status: string;
   youtube_video_id?: string;
   stream_url?: string;
+  created_by: string;
+  created_at: string;
 }
 
 interface Match {
@@ -59,8 +66,7 @@ interface Match {
   round: number;
   match_number: number;
   bracket_type: string;
-  player1_name: string;
-  player2_name: string;
+  created_at: string;
   player1?: {
     id: string;
     display_name: string;
@@ -76,18 +82,18 @@ interface Match {
 interface Participant {
   id: string;
   user_id: string;
+  tournament_id: string;
+  seed: number;
+  joined_at: string;
   user: {
     id: string;
     display_name: string;
     avatar_url?: string;
   };
-  seed: number;
-  joined_at: string;
 }
 
 export default function StreamingControlPage() {
   const params = useParams();
-  const router = useRouter();
   const { user } = useAuth();
   const tournamentId = params.tournamentId as string;
 
@@ -98,25 +104,18 @@ export default function StreamingControlPage() {
   const [selectedPlayer2, setSelectedPlayer2] = useState<string>("");
   const [showParticipantSelector, setShowParticipantSelector] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
-  const [error, setError] = useState("");
-  const [spectatorCount, setSpectatorCount] = useState({
-    active_spectators: 0,
-  });
+  const [spectatorCount, setSpectatorCount] = useState(0);
   const [overlayUrl, setOverlayUrl] = useState("");
   const [currentMatch, setCurrentMatch] = useState<Match | null>(null);
   const [copied, setCopied] = useState(false);
   const [showStopConfirm, setShowStopConfirm] = useState(false);
+  const [matchHistory, setMatchHistory] = useState<Match[]>([]);
+  const [showAdvancedControls, setShowAdvancedControls] = useState(false);
 
-  const getParticipantDisplayName = (participant: Participant): string => {
-    return participant.user.display_name || "Unknown Player";
-  };
-
-  // Check if user is admin
-  useEffect(() => {
-    if (user && tournament) {
-      // You can add admin check logic here
-      // For now, we'll assume any authenticated user can access
-    }
+  // Check if user is admin or tournament creator
+  const isAuthorized = useMemo(() => {
+    if (!user || !tournament) return false;
+    return user.id === tournament.created_by || user.role === "admin";
   }, [user, tournament]);
 
   // Fetch tournament data
@@ -145,110 +144,211 @@ export default function StreamingControlPage() {
     }
   }, [tournamentId]);
 
-  // Fetch matches
-  useEffect(() => {
-    const fetchMatches = async () => {
-      try {
-        const { data, error } = await supabase
-          .from("matches")
-          .select("*")
-          .eq("tournament_id", tournamentId)
-          .order("created_at", { ascending: false });
+  // Fetch matches with proper joins
+  const fetchMatches = useCallback(async () => {
+    try {
+      console.log("Fetching matches for tournament:", tournamentId);
 
-        if (error) throw error;
-        setMatches(data || []);
+      // First, get all matches
+      const { data: matchesData, error: matchesError } = await supabase
+        .from("matches")
+        .select("*")
+        .eq("tournament_id", tournamentId)
+        .order("created_at", { ascending: false });
 
-        // Find current match
-        const activeMatch = data?.find(
-          (match) => match.status === "in_progress"
-        );
-        setCurrentMatch(activeMatch || null);
-      } catch (error) {
-        console.error("Error fetching matches:", error);
+      if (matchesError) {
+        console.error("Error fetching matches:", matchesError);
+        throw matchesError;
       }
-    };
 
-    if (tournamentId) {
-      fetchMatches();
-      setIsLoading(false);
+      console.log("Raw matches data:", matchesData);
+
+      if (!matchesData || matchesData.length === 0) {
+        console.log("No matches found");
+        setMatches([]);
+        setCurrentMatch(null);
+        setMatchHistory([]);
+        return;
+      }
+
+      // Then, get user data for all players
+      const playerIds = new Set();
+      matchesData.forEach((match) => {
+        if (match.player1_id) playerIds.add(match.player1_id);
+        if (match.player2_id) playerIds.add(match.player2_id);
+      });
+
+      const userIds = Array.from(playerIds);
+      console.log("Player IDs to fetch:", userIds);
+
+      const { data: usersData, error: usersError } = await supabase
+        .from("users")
+        .select("id, display_name, avatar_url")
+        .in("id", userIds);
+
+      if (usersError) {
+        console.error("Error fetching users for matches:", usersError);
+        throw usersError;
+      }
+
+      console.log("Users data for matches:", usersData);
+
+      // Create a map for quick lookup
+      const userMap = new Map();
+      if (usersData) {
+        usersData.forEach((user) => userMap.set(user.id, user));
+      }
+
+      // Transform matches with player data
+      const transformedMatches = matchesData.map((match) => {
+        const player1 = userMap.get(match.player1_id);
+        const player2 = userMap.get(match.player2_id);
+
+        return {
+          ...match,
+          player1: player1
+            ? {
+                id: match.player1_id,
+                display_name: player1.display_name,
+                avatar_url: player1.avatar_url,
+              }
+            : undefined,
+          player2: player2
+            ? {
+                id: match.player2_id,
+                display_name: player2.display_name,
+                avatar_url: player2.avatar_url,
+              }
+            : undefined,
+        };
+      });
+
+      console.log("Transformed matches:", transformedMatches);
+      setMatches(transformedMatches);
+
+      // Find current match
+      const activeMatch = transformedMatches.find(
+        (match) => match.status === "in_progress"
+      );
+      setCurrentMatch(activeMatch || null);
+
+      // Set match history (completed matches)
+      const completedMatches = transformedMatches.filter(
+        (match) => match.status === "completed"
+      );
+      setMatchHistory(completedMatches);
+    } catch (error) {
+      console.error("Error fetching matches:", error);
+      setMatches([]);
+      setCurrentMatch(null);
+      setMatchHistory([]);
     }
   }, [tournamentId]);
 
-  // Fetch participants
-  useEffect(() => {
-    const fetchParticipants = async () => {
-      try {
-        console.log("Fetching participants for tournament:", tournamentId);
+  // Fetch participants with proper joins
+  const fetchParticipants = useCallback(async () => {
+    try {
+      console.log("Fetching participants for tournament:", tournamentId);
 
-        const { data, error } = await supabase
+      // First, get all participants
+      const { data: participantsData, error: participantsError } =
+        await supabase
           .from("tournament_participants")
           .select("*")
           .eq("tournament_id", tournamentId)
           .order("seed", { ascending: true });
 
-        if (error) throw error;
-
-        console.log("Raw participants data:", data);
-
-        // Fetch user information for participants
-        if (data && data.length > 0) {
-          const userIds = data.map((p) => p.user_id);
-          console.log("User IDs to fetch:", userIds);
-
-          const { data: users, error: usersError } = await supabase
-            .from("users")
-            .select("id, display_name, avatar_url")
-            .in("id", userIds);
-
-          console.log("Users data:", users);
-          console.log("Users error:", usersError);
-
-          if (usersError) {
-            console.warn("Error fetching users:", usersError);
-          }
-
-          // Create a map of user_id to user data
-          const userMap = new Map();
-          if (users) {
-            users.forEach((user) => userMap.set(user.id, user));
-          }
-
-          console.log("User map:", Object.fromEntries(userMap));
-
-          // Map participants with user data
-          const participantsWithUsers = data.map((p) => {
-            const user = userMap.get(p.user_id);
-            console.log(`Mapping participant ${p.user_id}:`, user);
-            return {
-              ...p,
-              user: {
-                id: p.user_id,
-                display_name: user?.display_name || "Unknown Player",
-                avatar_url: user?.avatar_url,
-              },
-            };
-          });
-
-          console.log("Final participants with users:", participantsWithUsers);
-          setParticipants(participantsWithUsers);
-        } else {
-          console.log("No participants found");
-          setParticipants([]);
-        }
-      } catch (error) {
-        console.error("Error fetching participants:", error);
+      if (participantsError) {
+        console.error("Error fetching participants:", participantsError);
+        throw participantsError;
       }
-    };
 
-    if (tournamentId) {
-      fetchParticipants();
+      console.log("Raw participants data:", participantsData);
+
+      if (!participantsData || participantsData.length === 0) {
+        console.log("No participants found");
+        setParticipants([]);
+        return;
+      }
+
+      // Then, get user data for all participants
+      const userIds = participantsData.map((p) => p.user_id);
+      console.log("User IDs to fetch:", userIds);
+
+      const { data: usersData, error: usersError } = await supabase
+        .from("users")
+        .select("id, display_name, avatar_url")
+        .in("id", userIds);
+
+      if (usersError) {
+        console.error("Error fetching users:", usersError);
+        throw usersError;
+      }
+
+      console.log("Users data:", usersData);
+
+      // Create a map for quick lookup
+      const userMap = new Map();
+      if (usersData) {
+        usersData.forEach((user) => userMap.set(user.id, user));
+      }
+
+      // Combine the data
+      const participantsWithUsers = participantsData.map((p) => {
+        const user = userMap.get(p.user_id);
+        console.log(`Mapping participant ${p.user_id}:`, user);
+        return {
+          ...p,
+          user: {
+            id: p.user_id,
+            display_name: user?.display_name || "Unknown Player",
+            avatar_url: user?.avatar_url,
+          },
+        };
+      });
+
+      console.log("Final participants with users:", participantsWithUsers);
+      setParticipants(participantsWithUsers);
+    } catch (error) {
+      console.error("Error fetching participants:", error);
+      setParticipants([]);
     }
   }, [tournamentId]);
 
+  // Fetch spectator count
+  const fetchSpectatorCount = useCallback(async () => {
+    try {
+      const { data, error } = await supabase
+        .from("tournament_spectators")
+        .select("active_spectators")
+        .eq("tournament_id", tournamentId)
+        .single();
+
+      if (!error && data) {
+        setSpectatorCount(data.active_spectators || 0);
+      }
+    } catch (error) {
+      console.error("Error fetching spectator count:", error);
+    }
+  }, [tournamentId]);
+
+  // Initial data fetch
+  useEffect(() => {
+    if (tournamentId) {
+      Promise.all([
+        fetchMatches(),
+        fetchParticipants(),
+        fetchSpectatorCount(),
+      ]).finally(() => setIsLoading(false));
+    }
+  }, [tournamentId, fetchMatches, fetchParticipants, fetchSpectatorCount]);
+
   // Real-time updates
   useEffect(() => {
+    if (!tournamentId) return;
+
     const channel = supabase
-      .channel(`tournament-${tournamentId}`)
+      .channel(`streaming-control-${tournamentId}`)
       .on(
         "postgres_changes",
         {
@@ -257,8 +357,9 @@ export default function StreamingControlPage() {
           table: "matches",
           filter: `tournament_id=eq.${tournamentId}`,
         },
-        () => {
-          // Refresh matches
+        (payload) => {
+          console.log("Match change detected in control:", payload);
+          // Immediate refresh for better responsiveness
           fetchMatches();
         }
       )
@@ -279,80 +380,31 @@ export default function StreamingControlPage() {
     return () => {
       supabase.removeChannel(channel);
     };
-  }, [tournamentId]);
-
-  const fetchMatches = async () => {
-    try {
-      const { data, error } = await supabase
-        .from("matches")
-        .select("*")
-        .eq("tournament_id", tournamentId)
-        .order("created_at", { ascending: false });
-
-      if (error) throw error;
-
-      // Transform the data to include player names (using user_id as fallback)
-      const transformedData =
-        data?.map((match) => ({
-          ...match,
-          player1_name: match.player1_id || "Unknown Player",
-          player2_name: match.player2_id || "Unknown Player",
-        })) || [];
-
-      setMatches(transformedData);
-    } catch (error) {
-      console.error("Error fetching matches:", error);
-    }
-  };
-
-  const fetchSpectatorCount = async () => {
-    try {
-      const { data, error } = await supabase
-        .from("tournament_spectators")
-        .select("active_spectators")
-        .eq("tournament_id", tournamentId)
-        .single();
-
-      if (!error && data) {
-        setSpectatorCount(data.active_spectators || 0);
-      }
-    } catch (error) {
-      console.error("Error fetching spectator count:", error);
-    }
-  };
+  }, [tournamentId, fetchMatches, fetchSpectatorCount]);
 
   // Update match score
-  const updateMatchScore = async (
-    matchId: string,
-    player1Score: number,
-    player2Score: number
-  ) => {
-    // if (isUpdating) return; // This line was removed as per the new_code
+  const updateMatchScore = useCallback(
+    async (matchId: string, player1Score: number, player2Score: number) => {
+      try {
+        const { error } = await supabase
+          .from("matches")
+          .update({
+            player1_score: Math.max(0, player1Score),
+            player2_score: Math.max(0, player2Score),
+            status:
+              player1Score >= 3 || player2Score >= 3
+                ? "completed"
+                : "in_progress",
+          })
+          .eq("id", matchId);
 
-    // setIsUpdating(true); // This line was removed as per the new_code
-    try {
-      const { error } = await supabase
-        .from("matches")
-        .update({
-          player1_score: player1Score,
-          player2_score: player2Score,
-          status:
-            player1Score >= 3 || player2Score >= 3
-              ? "completed"
-              : "in_progress",
-        })
-        .eq("id", matchId);
-
-      if (error) throw error;
-
-      // Refresh matches
-      await fetchMatches();
-    } catch (error) {
-      console.error("Error updating match score:", error);
-    } finally {
-      // setIsUpdating(false); // This line was removed as per the new_code
-    }
-  };
+        if (error) throw error;
+      } catch (error) {
+        console.error("Error updating match score:", error);
+      }
+    },
+    []
+  );
 
   // Copy overlay URL
   const copyOverlayUrl = async () => {
@@ -366,61 +418,51 @@ export default function StreamingControlPage() {
   };
 
   // Start a match
-  const startMatch = async (matchId: string) => {
-    try {
-      console.log("Starting match:", matchId);
+  const startMatch = useCallback(
+    async (matchId: string) => {
+      try {
+        const { error } = await supabase
+          .from("matches")
+          .update({ status: "in_progress" })
+          .eq("id", matchId);
 
-      const { error } = await supabase
-        .from("matches")
-        .update({ status: "in_progress" })
-        .eq("id", matchId);
+        if (error) throw error;
 
-      if (error) {
+        // Force refresh matches immediately
+        setTimeout(() => {
+          fetchMatches();
+        }, 500);
+      } catch (error) {
         console.error("Error starting match:", error);
-        throw error;
       }
-
-      console.log("Match started successfully");
-      await fetchMatches();
-
-      // Force refresh the current match detection
-      setTimeout(() => {
-        fetchMatches();
-      }, 1000);
-    } catch (error) {
-      console.error("Error starting match:", error);
-    }
-  };
+    },
+    [fetchMatches]
+  );
 
   // Stop the current match
-  const stopMatch = async (matchId: string) => {
-    try {
-      console.log("Stopping match:", matchId);
+  const stopMatch = useCallback(
+    async (matchId: string) => {
+      try {
+        const { error } = await supabase
+          .from("matches")
+          .update({ status: "completed" })
+          .eq("id", matchId);
 
-      const { error } = await supabase
-        .from("matches")
-        .update({ status: "completed" })
-        .eq("id", matchId);
+        if (error) throw error;
 
-      if (error) {
+        // Force refresh matches immediately
+        setTimeout(() => {
+          fetchMatches();
+        }, 500);
+      } catch (error) {
         console.error("Error stopping match:", error);
-        throw error;
       }
-
-      console.log("Match stopped successfully");
-      await fetchMatches();
-
-      // Force refresh the current match detection
-      setTimeout(() => {
-        fetchMatches();
-      }, 1000);
-    } catch (error) {
-      console.error("Error stopping match:", error);
-    }
-  };
+    },
+    [fetchMatches]
+  );
 
   // Create a new match with selected participants
-  const createMatchWithParticipants = async () => {
+  const createMatchWithParticipants = useCallback(async () => {
     if (!selectedPlayer1 || !selectedPlayer2) {
       alert("Please select both players");
       return;
@@ -440,14 +482,8 @@ export default function StreamingControlPage() {
         return;
       }
 
-      // Get player names using helper function
-      const player1Name = getParticipantDisplayName(player1);
-      const player2Name = getParticipantDisplayName(player2);
-
-      // First, let's get or create a phase for this tournament
+      // Get or create a phase for this tournament
       let phaseId = null;
-
-      // Try to get an existing phase
       const { data: existingPhase } = await supabase
         .from("tournament_phases")
         .select("id")
@@ -458,7 +494,6 @@ export default function StreamingControlPage() {
       if (existingPhase) {
         phaseId = existingPhase.id;
       } else {
-        // Create a new phase if none exists
         const { data: newPhase, error: phaseError } = await supabase
           .from("tournament_phases")
           .insert({
@@ -470,92 +505,74 @@ export default function StreamingControlPage() {
           .select("id")
           .single();
 
-        if (phaseError) {
-          console.error("Error creating phase:", phaseError);
-          throw new Error("Failed to create tournament phase");
-        }
-
+        if (phaseError) throw new Error("Failed to create tournament phase");
         phaseId = newPhase.id;
       }
 
-      const { data, error } = await supabase
-        .from("matches")
-        .insert({
-          tournament_id: tournamentId,
-          phase_id: phaseId,
-          player1_id: selectedPlayer1,
-          player2_id: selectedPlayer2,
-          player1_score: 0,
-          player2_score: 0,
-          status: "in_progress",
-          round: 1,
-          match_number: matches.length + 1,
-          bracket_type: "upper",
-        })
-        .select()
-        .single();
+      const { error } = await supabase.from("matches").insert({
+        tournament_id: tournamentId,
+        phase_id: phaseId,
+        player1_id: selectedPlayer1,
+        player2_id: selectedPlayer2,
+        player1_score: 0,
+        player2_score: 0,
+        status: "in_progress",
+        round: 1,
+        match_number: matches.length + 1,
+        bracket_type: "upper",
+      });
 
-      if (error) {
-        console.error("Supabase error:", error);
-        throw error;
-      }
-
-      console.log("Match created successfully:", data);
-      await fetchMatches();
+      if (error) throw error;
 
       // Reset selections
       setSelectedPlayer1("");
       setSelectedPlayer2("");
       setShowParticipantSelector(false);
+
+      // Force refresh matches immediately
+      setTimeout(() => {
+        fetchMatches();
+      }, 500);
     } catch (error) {
       console.error("Error creating match:", error);
       alert("Error creating match: " + (error as Error).message);
     }
-  };
+  }, [
+    selectedPlayer1,
+    selectedPlayer2,
+    participants,
+    tournamentId,
+    matches.length,
+  ]);
 
-  // Update match participants
-  const updateMatchParticipants = async (
-    matchId: string,
-    player1Id: string,
-    player2Id: string
-  ) => {
+  // Reset match scores
+  const resetMatchScores = useCallback(async (matchId: string) => {
     try {
-      const player1 = participants.find((p) => p.user_id === player1Id);
-      const player2 = participants.find((p) => p.user_id === player2Id);
-
-      if (!player1 || !player2) {
-        alert("Selected players not found");
-        return;
-      }
-
-      // Get player names using helper function
-      const player1Name = getParticipantDisplayName(player1);
-      const player2Name = getParticipantDisplayName(player2);
-
       const { error } = await supabase
         .from("matches")
         .update({
-          player1_id: player1Id,
-          player2_id: player2Id,
-          player1_name: player1Name,
-          player2_name: player2Name,
           player1_score: 0,
           player2_score: 0,
+          status: "in_progress",
         })
         .eq("id", matchId);
 
-      if (error) {
-        console.error("Supabase error:", error);
-        throw error;
-      }
-
-      console.log("Match participants updated successfully");
-      await fetchMatches();
+      if (error) throw error;
     } catch (error) {
-      console.error("Error updating match participants:", error);
-      alert("Error updating match participants: " + (error as Error).message);
+      console.error("Error resetting match scores:", error);
     }
-  };
+  }, []);
+
+  // Get match winner
+  const getMatchWinner = useCallback((match: Match) => {
+    if (match.status !== "completed") return null;
+    if (match.player1_score > match.player2_score) {
+      return match.player1?.display_name || "Player 1";
+    } else if (match.player2_score > match.player1_score) {
+      return match.player2?.display_name || "Player 2";
+    }
+    return "Tie";
+  }, []);
 
   if (isLoading) {
     return (
@@ -576,6 +593,22 @@ export default function StreamingControlPage() {
           <Alert>
             <AlertCircle className="h-4 w-4" />
             <AlertDescription>Tournament not found</AlertDescription>
+          </Alert>
+        </div>
+      </div>
+    );
+  }
+
+  if (!isAuthorized) {
+    return (
+      <div className="min-h-screen bg-background">
+        <Navigation />
+        <div className="container mx-auto px-4 py-8">
+          <Alert>
+            <AlertCircle className="h-4 w-4" />
+            <AlertDescription>
+              You don't have permission to access this streaming control.
+            </AlertDescription>
           </Alert>
         </div>
       </div>
@@ -608,6 +641,14 @@ export default function StreamingControlPage() {
                   ? "LIVE"
                   : tournament.status}
               </Badge>
+              <Button
+                onClick={() => setShowAdvancedControls(!showAdvancedControls)}
+                variant="outline"
+                size="sm"
+              >
+                <Settings className="h-4 w-4 mr-2" />
+                Advanced
+              </Button>
             </div>
           </div>
         </div>
@@ -678,9 +719,7 @@ export default function StreamingControlPage() {
               <div className="grid grid-cols-2 gap-4">
                 <div className="text-center p-4 bg-muted rounded-lg">
                   <Users className="h-8 w-8 mx-auto mb-2 text-blue-500" />
-                  <p className="text-2xl font-bold">
-                    {spectatorCount.active_spectators}
-                  </p>
+                  <p className="text-2xl font-bold">{spectatorCount}</p>
                   <p className="text-sm text-muted-foreground">Spectators</p>
                 </div>
                 <div className="text-center p-4 bg-muted rounded-lg">
@@ -702,7 +741,8 @@ export default function StreamingControlPage() {
                 {currentMatch && (
                   <div className="p-3 bg-muted rounded-lg">
                     <p className="font-medium">
-                      {currentMatch.player1_name} vs {currentMatch.player2_name}
+                      {currentMatch.player1?.display_name || "Player 1"} vs{" "}
+                      {currentMatch.player2?.display_name || "Player 2"}
                     </p>
                     <p className="text-sm text-muted-foreground">
                       Round {currentMatch.round} • Match{" "}
@@ -725,14 +765,22 @@ export default function StreamingControlPage() {
                 <Badge variant="destructive" className="animate-pulse">
                   LIVE
                 </Badge>
-                <Button
-                  onClick={() => setShowStopConfirm(true)}
-                  variant="destructive"
-                  size="sm"
-                  className="ml-auto"
-                >
-                  Stop Match
-                </Button>
+                <div className="ml-auto flex gap-2">
+                  <Button
+                    onClick={() => resetMatchScores(currentMatch.id)}
+                    variant="outline"
+                    size="sm"
+                  >
+                    Reset Scores
+                  </Button>
+                  <Button
+                    onClick={() => setShowStopConfirm(true)}
+                    variant="destructive"
+                    size="sm"
+                  >
+                    Stop Match
+                  </Button>
+                </div>
               </CardTitle>
             </CardHeader>
             <CardContent>
@@ -744,24 +792,20 @@ export default function StreamingControlPage() {
                 <div className="flex items-center justify-center gap-6">
                   <div className="text-center">
                     <div className="w-16 h-16 bg-blue-500 rounded-full flex items-center justify-center text-white font-bold text-xl mb-2">
-                      {currentMatch.player1_name
-                        ? currentMatch.player1_name.charAt(0)
-                        : "P"}
+                      {currentMatch.player1?.display_name?.charAt(0) || "P"}
                     </div>
                     <p className="font-medium">
-                      {currentMatch.player1_name || "Player 1"}
+                      {currentMatch.player1?.display_name || "Player 1"}
                     </p>
                     <p className="text-sm text-muted-foreground">Player 1</p>
                   </div>
                   <div className="text-2xl font-bold">VS</div>
                   <div className="text-center">
                     <div className="w-16 h-16 bg-red-500 rounded-full flex items-center justify-center text-white font-bold text-xl mb-2">
-                      {currentMatch.player2_name
-                        ? currentMatch.player2_name.charAt(0)
-                        : "P"}
+                      {currentMatch.player2?.display_name?.charAt(0) || "P"}
                     </div>
                     <p className="font-medium">
-                      {currentMatch.player2_name || "Player 2"}
+                      {currentMatch.player2?.display_name || "Player 2"}
                     </p>
                     <p className="text-sm text-muted-foreground">Player 2</p>
                   </div>
@@ -771,7 +815,7 @@ export default function StreamingControlPage() {
                 {/* Player 1 */}
                 <div className="text-center p-6 bg-blue-50 dark:bg-blue-950/20 rounded-xl border border-blue-200 dark:border-blue-800">
                   <h3 className="text-xl font-bold mb-4">
-                    {currentMatch.player1_name}
+                    {currentMatch.player1?.display_name || "Player 1"}
                   </h3>
                   <motion.div
                     key={currentMatch.player1_score}
@@ -814,7 +858,7 @@ export default function StreamingControlPage() {
                 {/* Player 2 */}
                 <div className="text-center p-6 bg-red-50 dark:bg-red-950/20 rounded-xl border border-red-200 dark:border-red-800">
                   <h3 className="text-xl font-bold mb-4">
-                    {currentMatch.player2_name}
+                    {currentMatch.player2?.display_name || "Player 2"}
                   </h3>
                   <motion.div
                     key={currentMatch.player2_score}
@@ -882,43 +926,49 @@ export default function StreamingControlPage() {
                 {/* Player 1 Selection */}
                 <div className="space-y-2">
                   <Label>Player 1</Label>
-                  <select
+                  <Select
                     value={selectedPlayer1}
-                    onChange={(e) => setSelectedPlayer1(e.target.value)}
-                    className="w-full p-2 border rounded-md"
+                    onValueChange={setSelectedPlayer1}
                   >
-                    <option value="">Select Player 1</option>
-                    {participants.map((participant) => (
-                      <option
-                        key={participant.user_id}
-                        value={participant.user_id}
-                      >
-                        {participant.user.display_name} (Seed {participant.seed}
-                        )
-                      </option>
-                    ))}
-                  </select>
+                    <SelectTrigger>
+                      <SelectValue placeholder="Select Player 1" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {participants.map((participant) => (
+                        <SelectItem
+                          key={participant.user_id}
+                          value={participant.user_id}
+                        >
+                          {participant.user.display_name} (Seed{" "}
+                          {participant.seed})
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
                 </div>
 
                 {/* Player 2 Selection */}
                 <div className="space-y-2">
                   <Label>Player 2</Label>
-                  <select
+                  <Select
                     value={selectedPlayer2}
-                    onChange={(e) => setSelectedPlayer2(e.target.value)}
-                    className="w-full p-2 border rounded-md"
+                    onValueChange={setSelectedPlayer2}
                   >
-                    <option value="">Select Player 2</option>
-                    {participants.map((participant) => (
-                      <option
-                        key={participant.user_id}
-                        value={participant.user_id}
-                      >
-                        {participant.user.display_name} (Seed {participant.seed}
-                        )
-                      </option>
-                    ))}
-                  </select>
+                    <SelectTrigger>
+                      <SelectValue placeholder="Select Player 2" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {participants.map((participant) => (
+                        <SelectItem
+                          key={participant.user_id}
+                          value={participant.user_id}
+                        >
+                          {participant.user.display_name} (Seed{" "}
+                          {participant.seed})
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
                 </div>
               </div>
 
@@ -976,6 +1026,57 @@ export default function StreamingControlPage() {
           )}
         </Card>
 
+        {/* Match History */}
+        {matchHistory.length > 0 && (
+          <Card className="mt-8">
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <Award className="h-5 w-5" />
+                Match History
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="space-y-4">
+                {matchHistory.slice(0, 5).map((match) => (
+                  <div
+                    key={match.id}
+                    className="p-4 bg-green-50 dark:bg-green-950/20 border border-green-200 dark:border-green-800 rounded-lg"
+                  >
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <h4 className="font-medium">
+                          {match.player1?.display_name || "Player 1"} vs{" "}
+                          {match.player2?.display_name || "Player 2"}
+                        </h4>
+                        <p className="text-sm text-muted-foreground">
+                          Round {match.round} • Match {match.match_number}
+                        </p>
+                        <p className="text-sm font-medium">
+                          Final Score: {match.player1_score} -{" "}
+                          {match.player2_score}
+                        </p>
+                        <p className="text-sm text-green-600 dark:text-green-400">
+                          Winner: {getMatchWinner(match)}
+                        </p>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <Badge variant="default">Completed</Badge>
+                        <Button
+                          onClick={() => resetMatchScores(match.id)}
+                          variant="outline"
+                          size="sm"
+                        >
+                          Reset & Restart
+                        </Button>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </CardContent>
+          </Card>
+        )}
+
         {/* Debug Section */}
         <MatchStatusDebug tournamentId={tournamentId} />
 
@@ -1011,7 +1112,8 @@ export default function StreamingControlPage() {
                   <div className="flex items-center justify-between">
                     <div>
                       <h4 className="font-medium">
-                        {match.player1_name} vs {match.player2_name}
+                        {match.player1?.display_name || "Player 1"} vs{" "}
+                        {match.player2?.display_name || "Player 2"}
                       </h4>
                       <p className="text-sm text-muted-foreground">
                         Round {match.round} • Match {match.match_number}
@@ -1019,6 +1121,11 @@ export default function StreamingControlPage() {
                       {match.status !== "pending" && (
                         <p className="text-sm font-medium">
                           Score: {match.player1_score} - {match.player2_score}
+                        </p>
+                      )}
+                      {match.status === "completed" && (
+                        <p className="text-sm text-green-600 dark:text-green-400">
+                          Winner: {getMatchWinner(match)}
                         </p>
                       )}
                     </div>
@@ -1037,6 +1144,15 @@ export default function StreamingControlPage() {
                       {match.status === "pending" && (
                         <Button onClick={() => startMatch(match.id)} size="sm">
                           Start Match
+                        </Button>
+                      )}
+                      {match.status === "completed" && (
+                        <Button
+                          onClick={() => resetMatchScores(match.id)}
+                          variant="outline"
+                          size="sm"
+                        >
+                          Reset
                         </Button>
                       )}
                     </div>
