@@ -9,72 +9,71 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent } from "@/components/ui/card";
 import { Alert, AlertDescription } from "@/components/ui/alert";
-import { Loader2, Swords, ArrowLeft, CheckCircle } from "lucide-react";
+import { Separator } from "@/components/ui/separator";
+import {
+  Loader2,
+  Swords,
+  ArrowLeft,
+  Eye,
+  EyeOff,
+  Mail,
+  Lock,
+  User,
+  Chrome,
+} from "lucide-react";
 
 export default function SignUpPage() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [displayName, setDisplayName] = useState("");
-  const [confirmPassword, setConfirmPassword] = useState("");
-  const [error, setError] = useState("");
-  const [loading, setLoading] = useState(false);
-  const [success, setSuccess] = useState(false);
-  const { signUp } = useAuth();
+  const [showPassword, setShowPassword] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [isLoading, setIsLoading] = useState(false);
+  const [isGoogleLoading, setIsGoogleLoading] = useState(false);
+
+  const { signUp, signInWithGoogle } = useAuth();
   const router = useRouter();
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    setError("");
-    setLoading(true);
+    setError(null);
+    setIsLoading(true);
 
-    if (password !== confirmPassword) {
-      setError("Passwords do not match");
-      setLoading(false);
-      return;
+    try {
+      const { error } = await signUp(email, password, displayName);
+
+      if (error) {
+        setError(error.message);
+      } else {
+        // Redirect to login page with success message
+        router.push(
+          "/auth/login?message=Account created successfully! Please check your email to verify your account."
+        );
+      }
+    } catch {
+      setError("An unexpected error occurred. Please try again.");
+    } finally {
+      setIsLoading(false);
     }
-
-    if (password.length < 6) {
-      setError("Password must be at least 6 characters long");
-      setLoading(false);
-      return;
-    }
-
-    const { error } = await signUp(email, password, displayName);
-
-    if (error) {
-      setError(error.message);
-    } else {
-      setSuccess(true);
-      setTimeout(() => {
-        router.push("/auth/login");
-      }, 3000);
-    }
-    setLoading(false);
   };
 
-  if (success) {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-background via-background to-muted/20 dark:to-muted/10 p-4">
-        <div className="w-full max-w-sm text-center">
-          <div className="flex justify-center mb-6">
-            <div className="flex h-16 w-16 items-center justify-center rounded-full bg-green-100 dark:bg-green-900/20">
-              <CheckCircle className="h-8 w-8 text-green-600 dark:text-green-400" />
-            </div>
-          </div>
-          <h1 className="text-2xl font-bold tracking-tight mb-4">
-            Account Created!
-          </h1>
-          <p className="text-muted-foreground mb-6">
-            Please check your email for a verification link. You&apos;ll be
-            redirected to sign in shortly.
-          </p>
-          <Button variant="outline" asChild>
-            <Link href="/auth/login">Go to Sign In</Link>
-          </Button>
-        </div>
-      </div>
-    );
-  }
+  const handleGoogleSignIn = async () => {
+    setError(null);
+    setIsGoogleLoading(true);
+
+    try {
+      const { error } = await signInWithGoogle();
+
+      if (error) {
+        setError(error.message);
+      }
+      // Google OAuth will redirect automatically
+    } catch {
+      setError("An unexpected error occurred with Google sign-in.");
+    } finally {
+      setIsGoogleLoading(false);
+    }
+  };
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-background via-background to-muted/20 dark:to-muted/10 p-4">
@@ -95,80 +94,115 @@ export default function SignUpPage() {
           </div>
           <h1 className="text-2xl font-bold tracking-tight">Create account</h1>
           <p className="text-muted-foreground mt-2">
-            Join the Beyblade community
+            Join Bolobey and start your Beyblade journey
           </p>
         </div>
 
         <Card className="border-0 shadow-lg dark:shadow-xl dark:shadow-black/10">
           <CardContent className="p-6">
-            <form onSubmit={handleSubmit} className="space-y-4">
-              {error && (
-                <Alert variant="destructive">
-                  <AlertDescription>{error}</AlertDescription>
-                </Alert>
+            {/* Google Sign-In Button */}
+            <Button
+              onClick={handleGoogleSignIn}
+              disabled={isGoogleLoading}
+              className="w-full h-11 bg-white text-gray-700 border border-gray-300 hover:bg-gray-50 dark:bg-gray-800 dark:text-gray-200 dark:border-gray-600 dark:hover:bg-gray-700"
+              variant="outline"
+            >
+              {isGoogleLoading ? (
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+              ) : (
+                <Chrome className="mr-2 h-4 w-4" />
               )}
+              {isGoogleLoading ? "Connecting..." : "Continue with Google"}
+            </Button>
 
+            <div className="relative my-6">
+              <div className="absolute inset-0 flex items-center">
+                <Separator className="w-full" />
+              </div>
+              <div className="relative flex justify-center text-xs uppercase">
+                <span className="bg-background px-2 text-muted-foreground">
+                  Or continue with email
+                </span>
+              </div>
+            </div>
+
+            {/* Error Alert */}
+            {error && (
+              <Alert variant="destructive" className="mb-4">
+                <AlertDescription>{error}</AlertDescription>
+              </Alert>
+            )}
+
+            {/* Sign Up Form */}
+            <form onSubmit={handleSubmit} className="space-y-4">
               <div className="space-y-2">
                 <Label htmlFor="displayName">Display Name</Label>
-                <Input
-                  id="displayName"
-                  type="text"
-                  placeholder="Your tournament name"
-                  value={displayName}
-                  onChange={(e) => setDisplayName(e.target.value)}
-                  required
-                  className="h-11"
-                />
+                <div className="relative">
+                  <User className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
+                  <Input
+                    id="displayName"
+                    type="text"
+                    placeholder="Enter your display name"
+                    value={displayName}
+                    onChange={(e) => setDisplayName(e.target.value)}
+                    className="pl-10 h-11"
+                    required
+                  />
+                </div>
               </div>
 
               <div className="space-y-2">
                 <Label htmlFor="email">Email</Label>
-                <Input
-                  id="email"
-                  type="email"
-                  placeholder="you@example.com"
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  required
-                  className="h-11"
-                />
+                <div className="relative">
+                  <Mail className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
+                  <Input
+                    id="email"
+                    type="email"
+                    placeholder="you@example.com"
+                    value={email}
+                    onChange={(e) => setEmail(e.target.value)}
+                    className="pl-10 h-11"
+                    required
+                  />
+                </div>
               </div>
 
               <div className="space-y-2">
                 <Label htmlFor="password">Password</Label>
-                <Input
-                  id="password"
-                  type="password"
-                  placeholder="••••••••"
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  required
-                  className="h-11"
-                />
-                <p className="text-xs text-muted-foreground">
-                  Must be at least 6 characters long
-                </p>
-              </div>
-
-              <div className="space-y-2">
-                <Label htmlFor="confirmPassword">Confirm Password</Label>
-                <Input
-                  id="confirmPassword"
-                  type="password"
-                  placeholder="••••••••"
-                  value={confirmPassword}
-                  onChange={(e) => setConfirmPassword(e.target.value)}
-                  required
-                  className="h-11"
-                />
+                <div className="relative">
+                  <Lock className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
+                  <Input
+                    id="password"
+                    type={showPassword ? "text" : "password"}
+                    placeholder="••••••••"
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
+                    className="pl-10 pr-10 h-11"
+                    required
+                    minLength={6}
+                  />
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    className="absolute right-0 top-0 h-full px-3 py-2 hover:bg-transparent"
+                    onClick={() => setShowPassword(!showPassword)}
+                  >
+                    {showPassword ? (
+                      <EyeOff className="h-4 w-4 text-muted-foreground" />
+                    ) : (
+                      <Eye className="h-4 w-4 text-muted-foreground" />
+                    )}
+                  </Button>
+                </div>
               </div>
 
               <Button
                 type="submit"
+                disabled={isLoading}
                 className="w-full h-11 mt-6"
-                disabled={loading}
               >
-                {loading ? (
+                {isLoading ? (
                   <>
                     <Loader2 className="mr-2 h-4 w-4 animate-spin" />
                     Creating account...

@@ -20,11 +20,8 @@ import {
   Target,
   AlertCircle,
   CheckCircle,
-  Users,
-  Clock,
   Trophy,
   TrendingUp,
-  Activity,
   RefreshCw,
 } from "lucide-react";
 import { supabase } from "@/lib/supabase";
@@ -84,6 +81,7 @@ export function AdminBettingControlsV3Simple({
   // Fetch current betting match
   const fetchCurrentMatch = useCallback(async () => {
     try {
+      // First, try to query the view
       const { data, error } = await supabase
         .from("current_betting_matches_v3")
         .select("*")
@@ -93,14 +91,85 @@ export function AdminBettingControlsV3Simple({
         .limit(1)
         .single();
 
+      // If view doesn't exist or fails, fallback to direct table query
+      if (
+        error &&
+        (error.code === "PGRST116" ||
+          error.message.includes("relation") ||
+          error.message.includes("view"))
+      ) {
+        console.log("View not found, falling back to direct table query");
+
+        // Fallback: query betting_matches table directly
+        const { data: fallbackData, error: fallbackError } = await supabase
+          .from("betting_matches")
+          .select("*")
+          .eq("tournament_id", tournamentId)
+          .in("status", ["pending", "betting_open", "betting_closed", "live"])
+          .order("created_at", { ascending: false })
+          .limit(1)
+          .single();
+
+        if (fallbackError && fallbackError.code !== "PGRST116") {
+          console.error(
+            "Error fetching current match (fallback):",
+            fallbackError
+          );
+          setError(`Error fetching current match: ${fallbackError.message}`);
+          return;
+        }
+
+        if (fallbackData) {
+          // Fetch user data separately to avoid foreign key issues
+          const userIds = [
+            fallbackData.player1_id,
+            fallbackData.player2_id,
+          ].filter(Boolean);
+          let player1Name = "Unknown Player";
+          let player2Name = "Unknown Player";
+
+          if (userIds.length > 0) {
+            const { data: users, error: usersError } = await supabase
+              .from("users")
+              .select("id, display_name")
+              .in("id", userIds);
+
+            if (!usersError && users) {
+              const userMap = new Map(users.map((u) => [u.id, u.display_name]));
+              player1Name =
+                userMap.get(fallbackData.player1_id) || "Unknown Player";
+              player2Name =
+                userMap.get(fallbackData.player2_id) || "Unknown Player";
+            }
+          }
+
+          // Transform the data to match the expected format
+          const transformedData = {
+            ...fallbackData,
+            player1_name: player1Name,
+            player2_name: player2Name,
+            player1_bet_count: 0,
+            player1_total_points: 0,
+            player2_bet_count: 0,
+            player2_total_points: 0,
+            player1_odds: 2.0,
+            player2_odds: 2.0,
+          };
+          setCurrentMatch(transformedData);
+          return;
+        }
+      }
+
       if (error && error.code !== "PGRST116") {
         console.error("Error fetching current match:", error);
+        setError(`Error fetching current match: ${error.message}`);
         return;
       }
 
       setCurrentMatch(data);
     } catch (error) {
       console.error("Error fetching current match:", error);
+      setError("Error fetching current match");
     }
   }, [tournamentId]);
 
@@ -109,13 +178,7 @@ export function AdminBettingControlsV3Simple({
     try {
       const { data, error } = await supabase
         .from("tournament_participants")
-        .select(
-          `
-          id,
-          user_id,
-          user:users!tournament_participants_user_id_fkey(display_name)
-        `
-        )
+        .select("*")
         .eq("tournament_id", tournamentId);
 
       if (error) {
@@ -123,14 +186,38 @@ export function AdminBettingControlsV3Simple({
         return;
       }
 
-      const formattedParticipants =
-        data?.map((p) => ({
-          id: p.id,
-          user_id: p.user_id,
-          display_name: p.user.display_name,
-        })) || [];
+      // Fetch user information for participants
+      if (data && data.length > 0) {
+        const userIds = data.map((p) => p.user_id);
+        const { data: users, error: usersError } = await supabase
+          .from("users")
+          .select("id, display_name")
+          .in("id", userIds);
 
-      setParticipants(formattedParticipants);
+        if (usersError) {
+          console.warn("Error fetching users:", usersError);
+        }
+
+        // Create a map of user_id to user data
+        const userMap = new Map();
+        if (users) {
+          users.forEach((user) => userMap.set(user.id, user));
+        }
+
+        // Map participants with user data
+        const formattedParticipants = data.map((p) => {
+          const user = userMap.get(p.user_id);
+          return {
+            id: p.id,
+            user_id: p.user_id,
+            display_name: user?.display_name || "Unknown Player",
+          };
+        });
+
+        setParticipants(formattedParticipants);
+      } else {
+        setParticipants([]);
+      }
     } catch (error) {
       console.error("Error fetching participants:", error);
     }
@@ -266,15 +353,6 @@ export function AdminBettingControlsV3Simple({
     } finally {
       setIsLoading(false);
     }
-  };
-
-  const formatTime = (seconds: number) => {
-    if (seconds <= 0) return "00:00";
-    const mins = Math.floor(seconds / 60);
-    const secs = seconds % 60;
-    return `${mins.toString().padStart(2, "0")}:${secs
-      .toString()
-      .padStart(2, "0")}`;
   };
 
   if (!isAdmin) {

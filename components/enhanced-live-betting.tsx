@@ -102,31 +102,7 @@ export function EnhancedLiveBetting({
   const { data: currentMatchData, refetch: refetchMatch } = useOptimizedFetch({
     key: `current-match-${tournamentId}`,
     fetcher: async () => {
-      // First, let's check if current_betting_matches view exists
-      const { error: viewError } = await supabase
-        .from("current_betting_matches")
-        .select("count")
-        .limit(1);
-
-      if (viewError) {
-        // Fallback: try to get data from betting_matches table directly
-        const { data: fallbackData, error: fallbackError } = await supabase
-          .from("betting_matches")
-          .select("*")
-          .eq("tournament_id", tournamentId)
-          .in("status", ["betting_open", "betting_closed", "live"])
-          .order("created_at", { ascending: false })
-          .limit(1)
-          .single();
-
-        if (fallbackError) {
-          return null;
-        }
-
-        return fallbackData;
-      }
-
-      // Original query to current_betting_matches view
+      // First, try to query the view
       const { data, error } = await supabase
         .from("current_betting_matches")
         .select("*")
@@ -136,7 +112,71 @@ export function EnhancedLiveBetting({
         .limit(1)
         .single();
 
+      // If view doesn't exist or fails, fallback to direct table query
+      if (
+        error &&
+        (error.code === "PGRST116" ||
+          error.message.includes("relation") ||
+          error.message.includes("view"))
+      ) {
+        console.log("View not found, falling back to direct table query");
+
+        // Fallback: query betting_matches table directly
+        const { data: fallbackData, error: fallbackError } = await supabase
+          .from("betting_matches")
+          .select("*")
+          .eq("tournament_id", tournamentId)
+          .in("status", ["betting_open", "betting_closed", "live"])
+          .order("created_at", { ascending: false })
+          .limit(1)
+          .single();
+
+        if (fallbackError && fallbackError.code !== "PGRST116") {
+          console.error(
+            "Error fetching current match (fallback):",
+            fallbackError
+          );
+          return null;
+        }
+
+        if (fallbackData) {
+          // Fetch user data separately to avoid foreign key issues
+          const userIds = [
+            fallbackData.player1_id,
+            fallbackData.player2_id,
+          ].filter(Boolean);
+          let player1Name = "Unknown Player";
+          let player2Name = "Unknown Player";
+
+          if (userIds.length > 0) {
+            const { data: users, error: usersError } = await supabase
+              .from("users")
+              .select("id, display_name")
+              .in("id", userIds);
+
+            if (!usersError && users) {
+              const userMap = new Map(users.map((u) => [u.id, u.display_name]));
+              player1Name =
+                userMap.get(fallbackData.player1_id) || "Unknown Player";
+              player2Name =
+                userMap.get(fallbackData.player2_id) || "Unknown Player";
+            }
+          }
+
+          // Transform the data to match the expected format
+          const transformedData = {
+            ...fallbackData,
+            player1_name: player1Name,
+            player2_name: player2Name,
+            total_bets: 0,
+            total_points_wagered: 0,
+          };
+          return transformedData;
+        }
+      }
+
       if (error && error.code !== "PGRST116") {
+        console.error("Error fetching current match:", error);
         return null;
       }
 
@@ -396,7 +436,8 @@ export function EnhancedLiveBetting({
   };
 
   // Get initials for avatar
-  const getInitials = (name: string) => {
+  const getInitials = (name: string | undefined | null) => {
+    if (!name) return "??";
     return name
       .split(" ")
       .map((n) => n[0])
@@ -507,7 +548,7 @@ export function EnhancedLiveBetting({
                 </Avatar>
                 <div>
                   <h4 className="text-white font-semibold">
-                    {currentMatch.player1_name}
+                    {currentMatch.player1_name || "Unknown Player"}
                   </h4>
                   <div className="flex items-center gap-1">
                     <Star className="h-3 w-3 text-yellow-400" />
@@ -562,7 +603,7 @@ export function EnhancedLiveBetting({
                 </Avatar>
                 <div>
                   <h4 className="text-white font-semibold">
-                    {currentMatch.player2_name}
+                    {currentMatch.player2_name || "Unknown Player"}
                   </h4>
                   <div className="flex items-center gap-1">
                     <Star className="h-3 w-3 text-yellow-400" />
@@ -634,8 +675,8 @@ export function EnhancedLiveBetting({
                   <p className="text-white text-sm">
                     {userBet.points_wagered} pts on{" "}
                     {userBet.bet_on_player_id === currentMatch.player1_id
-                      ? currentMatch.player1_name
-                      : currentMatch.player2_name}
+                      ? currentMatch.player1_name || "Unknown Player"
+                      : currentMatch.player2_name || "Unknown Player"}
                   </p>
                 </div>
                 <div className="text-right">
@@ -823,8 +864,8 @@ export function EnhancedLiveBetting({
                   on{" "}
                   <span className="text-white font-bold">
                     {selectedPlayer === currentMatch.player1_id
-                      ? currentMatch.player1_name
-                      : currentMatch.player2_name}
+                      ? currentMatch.player1_name || "Unknown Player"
+                      : currentMatch.player2_name || "Unknown Player"}
                   </span>
                 </p>
                 {bettingStats && (

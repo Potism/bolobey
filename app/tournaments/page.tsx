@@ -38,22 +38,27 @@ export default function TournamentsPage() {
     try {
       const { data, error } = await supabase
         .from("tournaments")
-        .select(
-          `
-          *,
-          created_by_user:users!created_by(id, display_name),
-          winner:users!winner_id(id, display_name),
-          tournament_participants(id, user_id)
-        `
-        )
+        .select("*")
         .order("created_at", { ascending: false });
 
       if (error) throw error;
 
-      const tournamentsWithCounts = data.map((tournament) => ({
-        ...tournament,
-        participant_count: tournament.tournament_participants?.length || 0,
-      }));
+      // Fetch participant counts for each tournament
+      const tournamentsWithCounts = await Promise.all(
+        data.map(async (tournament) => {
+          const { count: participantCount } = await supabase
+            .from("tournament_participants")
+            .select("*", { count: "exact", head: true })
+            .eq("tournament_id", tournament.id);
+
+          return {
+            ...tournament,
+            participant_count: participantCount || 0,
+            created_by_user: { display_name: "Unknown" }, // Fallback
+            winner: null, // Fallback
+          };
+        })
+      );
 
       setTournaments(tournamentsWithCounts);
     } catch (error) {
@@ -233,7 +238,8 @@ export default function TournamentsPage() {
                           <div className="flex items-center gap-2 text-sm">
                             <Trophy className="h-4 w-4 shrink-0 text-yellow-500" />
                             <span className="font-medium">
-                              Winner: {tournament.winner.display_name}
+                              Winner:{" "}
+                              {tournament.winner.display_name || "Unknown"}
                             </span>
                           </div>
                         )}
@@ -245,7 +251,9 @@ export default function TournamentsPage() {
                         <div className="flex items-center gap-2 text-muted-foreground">
                           <User className="h-4 w-4" />
                           <span>
-                            by {tournament.created_by_user?.display_name}
+                            by{" "}
+                            {tournament.created_by_user?.display_name ||
+                              "Unknown"}
                           </span>
                         </div>
                         <Badge variant="outline" className="text-xs">

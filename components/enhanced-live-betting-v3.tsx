@@ -332,7 +332,8 @@ export function EnhancedLiveBettingV3({
   };
 
   // Get initials for avatar
-  const getInitials = (name: string) => {
+  const getInitials = (name: string | undefined | null) => {
+    if (!name) return "??";
     return name
       .split(" ")
       .map((n) => n[0])

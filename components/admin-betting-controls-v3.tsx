@@ -152,16 +152,7 @@ export function AdminBettingControlsV3({
     try {
       const { data, error } = await supabase
         .from("tournament_participants")
-        .select(
-          `
-          id,
-          user_id,
-          user:users!tournament_participants_user_id_fkey(
-            display_name,
-            avatar_url
-          )
-        `
-        )
+        .select("*")
         .eq("tournament_id", tournamentId);
 
       if (error) {
@@ -169,15 +160,39 @@ export function AdminBettingControlsV3({
         return;
       }
 
-      const formattedParticipants =
-        data?.map((p) => ({
-          id: p.id,
-          user_id: p.user_id,
-          display_name: p.user.display_name,
-          avatar_url: p.user.avatar_url,
-        })) || [];
+      // Fetch user information for participants
+      if (data && data.length > 0) {
+        const userIds = data.map((p) => p.user_id);
+        const { data: users, error: usersError } = await supabase
+          .from("users")
+          .select("id, display_name, avatar_url")
+          .in("id", userIds);
 
-      setParticipants(formattedParticipants);
+        if (usersError) {
+          console.warn("Error fetching users:", usersError);
+        }
+
+        // Create a map of user_id to user data
+        const userMap = new Map();
+        if (users) {
+          users.forEach((user) => userMap.set(user.id, user));
+        }
+
+        // Map participants with user data
+        const formattedParticipants = data.map((p) => {
+          const user = userMap.get(p.user_id);
+          return {
+            id: p.id,
+            user_id: p.user_id,
+            display_name: user?.display_name || "Unknown Player",
+            avatar_url: user?.avatar_url,
+          };
+        });
+
+        setParticipants(formattedParticipants);
+      } else {
+        setParticipants([]);
+      }
     } catch (error) {
       console.error("Error fetching participants:", error);
     }

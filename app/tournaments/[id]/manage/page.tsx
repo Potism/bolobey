@@ -66,20 +66,7 @@ export default function TournamentManagePage() {
     try {
       const { data, error } = await supabase
         .from("tournaments")
-        .select(
-          `
-          *,
-          created_by_user:users!created_by(id, display_name),
-          winner:users!winner_id(id, display_name),
-          tournament_participants(
-            id,
-            user_id,
-            seed,
-            joined_at,
-            user:users(id, display_name)
-          )
-        `
-        )
+        .select("*")
         .eq("id", tournamentId)
         .single();
 
@@ -87,9 +74,81 @@ export default function TournamentManagePage() {
         setError("Tournament not found");
         console.error("Error fetching tournament:", error);
       } else {
+        // Fetch participants separately to avoid foreign key issues
+        const { data: participants, error: participantsError } = await supabase
+          .from("tournament_participants")
+          .select("*")
+          .eq("tournament_id", tournamentId);
+
+        if (participantsError) {
+          console.warn("Error fetching participants:", participantsError);
+        }
+
+        // Fetch user information for participants and creator
+        let participantsWithUsers = [];
+        let creatorUser = null;
+
+        if (participants && participants.length > 0) {
+          const userIds = participants.map((p) => p.user_id);
+          // Add creator to the list of users to fetch
+          if (data.created_by) {
+            userIds.push(data.created_by);
+          }
+
+          const { data: users, error: usersError } = await supabase
+            .from("users")
+            .select("id, display_name, avatar_url")
+            .in("id", userIds);
+
+          if (usersError) {
+            console.warn("Error fetching users:", usersError);
+          }
+
+          // Create a map of user_id to user data
+          const userMap = new Map();
+          if (users) {
+            users.forEach((user) => userMap.set(user.id, user));
+          }
+
+          // Get creator user data
+          if (data.created_by) {
+            creatorUser = userMap.get(data.created_by);
+          }
+
+          // Map participants with user data
+          participantsWithUsers = participants.map((p) => {
+            const user = userMap.get(p.user_id);
+            return {
+              ...p,
+              user: { display_name: user?.display_name || "Unknown Player" },
+            };
+          });
+        } else {
+          // Still fetch creator even if no participants
+          if (data.created_by) {
+            const { data: creatorData, error: creatorError } = await supabase
+              .from("users")
+              .select("id, display_name, avatar_url")
+              .eq("id", data.created_by)
+              .single();
+
+            if (!creatorError && creatorData) {
+              creatorUser = creatorData;
+            }
+          }
+        }
+
         setTournament({
           ...data,
-          participant_count: data.tournament_participants?.length || 0,
+          created_by_user: creatorUser
+            ? {
+                display_name: creatorUser.display_name,
+                avatar_url: creatorUser.avatar_url,
+              }
+            : { display_name: "Unknown" },
+          winner: null,
+          tournament_participants: participantsWithUsers,
+          participant_count: participants?.length || 0,
         });
       }
     } catch (error) {
@@ -744,7 +803,8 @@ export default function TournamentManagePage() {
                           </div>
                           <div>
                             <p className="font-medium">
-                              {participant.user?.display_name}
+                              {participant.user?.display_name ||
+                                "Unknown Player"}
                             </p>
                             <p className="text-xs text-muted-foreground">
                               Joined{" "}

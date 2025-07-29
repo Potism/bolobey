@@ -102,7 +102,8 @@ export function LiveTournamentDashboard({
     }
   }, [matches]);
 
-  const getInitials = (name: string) => {
+  const getInitials = (name: string | undefined | null) => {
+    if (!name) return "??";
     return name
       .split(" ")
       .map((n) => n[0])

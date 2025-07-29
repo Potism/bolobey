@@ -16,6 +16,7 @@ interface AuthContextType {
     password: string,
     displayName: string
   ) => Promise<{ error: Error | null }>;
+  signInWithGoogle: () => Promise<{ error: Error | null }>;
   signOut: () => Promise<void>;
   isAdmin: boolean;
 }
@@ -58,10 +59,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       const {
         data: { subscription },
       } = supabase.auth.onAuthStateChange(async (event, session) => {
+        console.log("Auth state change:", event, session?.user?.id);
         setSupabaseUser(session?.user ?? null);
         if (session?.user) {
+          console.log("User authenticated, fetching profile...");
           await fetchUserProfile(session.user.id);
         } else {
+          console.log("No user session, setting user to null");
           setUser(null);
           setLoading(false);
         }
@@ -75,6 +79,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   };
 
   const fetchUserProfile = async (userId: string) => {
+    console.log("fetchUserProfile called with userId:", userId);
     try {
       const { data, error } = await supabase
         .from("users")
@@ -82,11 +87,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         .eq("id", userId)
         .single();
 
+      console.log("fetchUserProfile result:", { data, error });
+
       if (error) {
         console.error("Error fetching user profile:", error);
 
         // If user profile doesn't exist, try to create it from auth user data
         if (error.code === "PGRST116") {
+          console.log("User profile not found, creating from auth data...");
           const { data: authUser } = await supabase.auth.getUser();
           if (authUser.user) {
             const { error: createError } = await supabase.from("users").insert({
@@ -100,6 +108,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             });
 
             if (!createError) {
+              console.log("User profile created successfully");
               // Try to fetch the profile again
               const { data: newProfile } = await supabase
                 .from("users")
@@ -108,17 +117,22 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
                 .single();
 
               if (newProfile) {
+                console.log("Setting user profile:", newProfile);
                 setUser(newProfile);
               }
+            } else {
+              console.error("Error creating user profile:", createError);
             }
           }
         }
       } else {
+        console.log("Setting user profile:", data);
         setUser(data);
       }
     } catch (error) {
       console.error("Error fetching user profile:", error);
     } finally {
+      console.log("fetchUserProfile completed, setting loading to false");
       setLoading(false);
     }
   };
@@ -134,11 +148,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         email,
         password,
       });
+
+      // Don't set loading to false here - let the auth state change handler manage it
+      // The auth state change will trigger fetchUserProfile which sets loading to false
       return { error };
     } catch (error) {
+      setLoading(false); // Only set to false on error
       return { error: error as Error };
-    } finally {
-      setLoading(false);
     }
   };
 
@@ -153,6 +169,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
     setLoading(true);
     try {
+      console.log("useAuth: Starting clean signup process...", {
+        email,
+        displayName,
+      });
+
+      // Step 1: Create auth user
       const { data, error } = await supabase.auth.signUp({
         email,
         password,
@@ -163,33 +185,73 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         },
       });
 
+      console.log("useAuth: Supabase auth.signUp result:", { data, error });
+
       if (error) {
+        console.error("useAuth: Supabase auth error:", error);
         return { error };
       }
 
-      // If signup was successful and we have a user, ensure profile is created
+      // Step 2: If signup was successful and we have a user, create profile manually
       if (data.user) {
-        // Try to create user profile manually in case trigger fails
-        const { error: profileError } = await supabase.from("users").upsert(
+        console.log(
+          "useAuth: User created, creating profile manually...",
+          data.user.id
+        );
+
+        // Use our new safe function to create user profile and points
+        const { error: createError } = await supabase.rpc(
+          "create_user_profile_safe",
           {
-            id: data.user.id,
-            email: data.user.email!,
+            user_id: data.user.id,
+            user_email: data.user.email!,
             display_name: displayName,
-            role: "player",
-          },
-          {
-            onConflict: "id",
           }
         );
 
-        if (profileError) {
-          console.warn("Failed to create user profile:", profileError);
+        if (createError) {
+          console.warn("useAuth: Failed to create user profile:", createError);
           // Don't return error here as auth was successful
+        } else {
+          console.log("useAuth: User profile and points created successfully");
         }
       }
 
+      console.log("useAuth: Clean signup process completed successfully");
       return { error: null };
     } catch (error) {
+      console.error("useAuth: Unexpected error during signup:", error);
+      return { error: error as Error };
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const signInWithGoogle = async () => {
+    if (!process.env.NEXT_PUBLIC_SUPABASE_URL) {
+      return { error: new Error("Supabase not configured") };
+    }
+
+    setLoading(true);
+    try {
+      console.log("useAuth: Starting Google sign-in...");
+
+      const { data, error } = await supabase.auth.signInWithOAuth({
+        provider: "google",
+        options: {
+          redirectTo: `${window.location.origin}/auth/callback`,
+        },
+      });
+
+      if (error) {
+        console.error("useAuth: Google sign-in error:", error);
+        return { error };
+      }
+
+      console.log("useAuth: Google sign-in initiated successfully");
+      return { error: null };
+    } catch (error) {
+      console.error("useAuth: Unexpected error during Google sign-in:", error);
       return { error: error as Error };
     } finally {
       setLoading(false);
@@ -233,6 +295,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setUser,
     signIn,
     signUp,
+    signInWithGoogle,
     signOut,
     isAdmin,
   };

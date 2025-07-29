@@ -233,12 +233,7 @@ export default function TournamentPage() {
       const [participantsResult, matchesResult] = await Promise.allSettled([
         supabaseClient
           .from("tournament_participants")
-          .select(
-            `
-            *,
-            users:user_id(display_name, avatar_url)
-          `
-          )
+          .select("*")
           .eq("tournament_id", tournamentId),
         supabaseClient
           .from("matches")
@@ -254,16 +249,51 @@ export default function TournamentPage() {
         participantsResult.status === "fulfilled" &&
         !participantsResult.value.error
       ) {
-        formattedParticipants = (participantsResult.value.data || []).map(
-          (p: ParticipantData) => ({
-            id: p.id,
-            user_id: p.user_id,
-            tournament_id: p.tournament_id,
-            username: p.users?.display_name || "Unknown Player",
-            avatar_url: p.users?.avatar_url,
-            created_at: p.created_at,
-          })
-        );
+        const participants = participantsResult.value.data || [];
+
+        // Fetch user information for all participants
+        if (participants.length > 0) {
+          const userIds = participants.map((p) => p.user_id);
+          console.log("Fetching users for participant IDs:", userIds);
+
+          const { data: users, error: usersError } = await supabaseClient
+            .from("users")
+            .select("id, display_name, avatar_url")
+            .in("id", userIds);
+
+          console.log("Users fetch result:", { users, usersError });
+
+          if (usersError) {
+            console.warn("Error fetching users:", usersError);
+          }
+
+          // Create a map of user_id to user data
+          const userMap = new Map();
+          if (users) {
+            users.forEach((user) => userMap.set(user.id, user));
+          }
+
+          console.log("User map created:", Array.from(userMap.entries()));
+
+          // Map participants with user data
+          formattedParticipants = participants.map((p) => {
+            const user = userMap.get(p.user_id);
+            console.log(`Mapping participant ${p.user_id}:`, {
+              user,
+              fallback: !user,
+            });
+            return {
+              id: p.id,
+              user_id: p.user_id,
+              tournament_id: p.tournament_id,
+              username: user?.display_name || "Unknown Player",
+              avatar_url: user?.avatar_url,
+              created_at: p.joined_at || p.created_at,
+            };
+          });
+
+          console.log("Formatted participants:", formattedParticipants);
+        }
       } else {
         console.warn("Participants fetch failed:", participantsResult);
       }

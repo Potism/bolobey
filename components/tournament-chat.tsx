@@ -117,12 +117,7 @@ export function TournamentChat({
     try {
       const { data, error } = await supabase
         .from("chat_messages")
-        .select(
-          `
-          *,
-          user:users(id, display_name, avatar_url)
-        `
-        )
+        .select("*")
         .eq("tournament_id", tournamentId)
         .order("created_at", { ascending: true })
         .limit(100);
@@ -131,15 +126,53 @@ export function TournamentChat({
         return;
       }
 
-      setMessages(data || []);
+      // Fetch user information for messages
+      if (data && data.length > 0) {
+        const userIds = data.map((m) => m.user_id);
+        const { data: users, error: usersError } = await supabase
+          .from("users")
+          .select("id, display_name, avatar_url")
+          .in("id", userIds);
 
-      // Cache user data for all messages
-      if (data) {
-        data.forEach((message) => {
+        if (usersError) {
+          console.warn("Error fetching users:", usersError);
+        }
+
+        // Create a map of user_id to user data
+        const userMap = new Map();
+        if (users) {
+          users.forEach((user) => userMap.set(user.id, user));
+        }
+
+        // Map messages with user data
+        const messagesWithUsers = data.map((message) => {
+          const user = userMap.get(message.user_id);
+          return {
+            ...message,
+            user: user
+              ? {
+                  id: message.user_id,
+                  display_name: user.display_name,
+                  avatar_url: user.avatar_url,
+                }
+              : {
+                  id: message.user_id,
+                  display_name: "Unknown User",
+                  avatar_url: null,
+                },
+          };
+        });
+
+        setMessages(messagesWithUsers);
+
+        // Cache user data for all messages
+        messagesWithUsers.forEach((message) => {
           if (message.user && !userCache.has(message.user.id)) {
             userCache.set(message.user.id, message.user);
           }
         });
+      } else {
+        setMessages([]);
       }
 
       // Add welcome message if no messages exist and this is the first time
