@@ -6,53 +6,19 @@ import { supabase } from "@/lib/supabase";
 import { motion, AnimatePresence } from "framer-motion";
 import { Trophy, Users, Target, Zap, Camera } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
-
-interface Tournament {
-  id: string;
-  name: string;
-  status: string;
-  youtube_video_id?: string;
-  stream_url?: string;
-}
-
-interface Match {
-  id: string;
-  tournament_id: string;
-  phase_id: string;
-  player1_id: string;
-  player2_id: string;
-  player1_score: number;
-  player2_score: number;
-  status: string;
-  round: number;
-  match_number: number;
-  bracket_type: string;
-  created_at: string;
-  player1?: {
-    id: string;
-    display_name: string;
-    avatar_url?: string;
-  };
-  player2?: {
-    id: string;
-    display_name: string;
-    avatar_url?: string;
-  };
-}
+import { useTournament } from "@/lib/contexts/TournamentContext";
+import type { Match } from "@/lib/contexts/TournamentContext";
 
 export default function StreamingOverlayPage() {
   const params = useParams();
   const tournamentId = params.tournamentId as string;
 
-  const [tournament, setTournament] = useState<Tournament | null>(null);
-  const [currentMatch, setCurrentMatch] = useState<Match | null>(null);
-  const [spectatorCount, setSpectatorCount] = useState(0);
-  const [isLoading, setIsLoading] = useState(true);
-  const [mediaSource, setMediaSource] = useState<"youtube" | "webcam" | "file">(
-    "youtube"
-  );
+  // Use Context API for tournament data
+  const { state, actions } = useTournament();
+  const { tournament, currentMatch, spectatorCount, isLoading } = state;
+
+  const [mediaSource] = useState<"youtube" | "webcam" | "file">("youtube");
   const [webcamStream, setWebcamStream] = useState<MediaStream | null>(null);
-  const [isTabActive, setIsTabActive] = useState(true);
   const [isConnected, setIsConnected] = useState(false);
   const [lastUpdateTime, setLastUpdateTime] = useState<Date | null>(null);
 
@@ -100,229 +66,62 @@ export default function StreamingOverlayPage() {
       if (error instanceof Error) {
         if (error.name === "NotAllowedError") {
           errorMessage +=
-            "Camera permission denied. Please allow camera access in this tab.";
-          console.warn(
-            `[${tabId}] Camera permission denied - user needs to allow access in this tab`
-          );
+            "Camera permission denied. Please allow camera access.";
         } else if (error.name === "NotFoundError") {
-          errorMessage += "No camera found on this device.";
-          console.warn(`[${tabId}] No camera found on device`);
-        } else if (error.name === "NotSupportedError") {
-          errorMessage += "Camera not supported in this browser.";
-          console.warn(`[${tabId}] Camera not supported in browser`);
+          errorMessage += "No camera found. Please connect a camera.";
         } else if (error.name === "NotReadableError") {
-          errorMessage += "Camera is already in use by another application.";
-          console.warn(`[${tabId}] Camera already in use`);
+          errorMessage += "Camera is in use by another application.";
         } else {
-          errorMessage += error.message || "Unknown error occurred.";
+          errorMessage += error.message;
         }
+      } else {
+        errorMessage += "Unknown error occurred.";
       }
 
-      // Show a subtle notification in the overlay instead of alert
-      console.warn(`[${tabId}] ${errorMessage}`);
+      console.error(errorMessage);
     }
   }, [tabId]);
 
   const stopWebcam = useCallback(() => {
     if (webcamStream) {
-      console.log(`[${tabId}] Stopping webcam for overlay`);
-      webcamStream.getTracks().forEach((track) => {
-        track.stop();
-        console.log(`[${tabId}] Stopped overlay track:`, track.kind);
-      });
+      webcamStream.getTracks().forEach((track) => track.stop());
       setWebcamStream(null);
       console.log(`[${tabId}] Webcam stopped for overlay`);
     }
   }, [webcamStream, tabId]);
 
-  // Cleanup webcam on unmount
-  useEffect(() => {
-    const handleBeforeUnload = () => {
-      console.log(`[${tabId}] Overlay tab closing - cleaning up webcam`);
-      stopWebcam();
-    };
-
-    window.addEventListener("beforeunload", handleBeforeUnload);
-
-    return () => {
-      console.log(
-        `[${tabId}] Overlay component unmounting - cleaning up webcam`
-      );
-      window.removeEventListener("beforeunload", handleBeforeUnload);
-      stopWebcam();
-    };
-  }, [stopWebcam, tabId]);
-
-  // Fetch tournament data
-  const fetchTournament = useCallback(async () => {
-    try {
-      const { data, error } = await supabase
-        .from("tournaments")
-        .select("*")
-        .eq("id", tournamentId)
-        .single();
-
-      if (error) throw error;
-      setTournament(data);
-
-      // Determine media source from tournament data
-      if (data.stream_url === "webcam") {
-        setMediaSource("webcam");
-        console.log("Tournament set to webcam mode - starting webcam");
-        startWebcam(); // Auto-start webcam when webcam mode is detected
-      } else if (data.youtube_video_id) {
-        setMediaSource("youtube");
-        console.log("Tournament set to YouTube mode");
-      } else {
-        setMediaSource("youtube"); // Default
-      }
-    } catch (error) {
-      console.error("Error fetching tournament:", error);
-    }
-  }, [tournamentId, startWebcam]);
-
-  useEffect(() => {
-    if (tournamentId) {
-      fetchTournament();
-    }
-  }, [tournamentId, fetchTournament]);
-
-  // Optimized function to fetch current match
-  const fetchCurrentMatch = useCallback(async () => {
-    try {
-      console.log("Fetching current match for tournament:", tournamentId);
-
-      // First, get all matches for this tournament
-      const { data: matchesData, error: matchesError } = await supabase
-        .from("matches")
-        .select("*")
-        .eq("tournament_id", tournamentId)
-        .order("created_at", { ascending: false });
-
-      if (matchesError) {
-        console.error("Error fetching matches:", matchesError);
-        return;
-      }
-
-      console.log("All matches:", matchesData);
-
-      // Find the active match
-      const activeMatch = matchesData?.find(
-        (match) => match.status === "in_progress"
-      );
-
-      if (activeMatch) {
-        console.log("Found active match:", activeMatch);
-
-        // Get user data for the players
-        const playerIds = [
-          activeMatch.player1_id,
-          activeMatch.player2_id,
-        ].filter(Boolean);
-
-        if (playerIds.length > 0) {
-          const { data: usersData, error: usersError } = await supabase
-            .from("users")
-            .select("id, display_name, avatar_url")
-            .in("id", playerIds);
-
-          if (usersError) {
-            console.error("Error fetching users:", usersError);
-          } else {
-            console.log("Users data:", usersData);
-
-            // Create a map for quick lookup
-            const userMap = new Map();
-            if (usersData) {
-              usersData.forEach((user) => userMap.set(user.id, user));
-            }
-
-            // Combine match with user data
-            const matchWithUsers = {
-              ...activeMatch,
-              player1: userMap.get(activeMatch.player1_id)
-                ? {
-                    id: activeMatch.player1_id,
-                    display_name: userMap.get(activeMatch.player1_id)
-                      ?.display_name,
-                    avatar_url: userMap.get(activeMatch.player1_id)?.avatar_url,
-                  }
-                : undefined,
-              player2: userMap.get(activeMatch.player2_id)
-                ? {
-                    id: activeMatch.player2_id,
-                    display_name: userMap.get(activeMatch.player2_id)
-                      ?.display_name,
-                    avatar_url: userMap.get(activeMatch.player2_id)?.avatar_url,
-                  }
-                : undefined,
-            };
-
-            console.log("Match with users:", matchWithUsers);
-            setCurrentMatch(matchWithUsers as Match);
-            return;
-          }
-        }
-
-        // If we can't get user data, still set the match
-        setCurrentMatch(activeMatch as Match);
-      } else {
-        console.log("No active match found");
-        setCurrentMatch(null);
-      }
-    } catch (error) {
-      console.error("Error fetching current match:", error);
-      setCurrentMatch(null);
-    }
-  }, [tournamentId]);
-
-  // Optimized spectator count fetching
-  const fetchSpectatorCount = useCallback(async () => {
-    try {
-      const { data, error } = await supabase
-        .from("tournament_spectators")
-        .select("active_spectators")
-        .eq("tournament_id", tournamentId)
-        .single();
-
-      if (!error && data) {
-        setSpectatorCount(data.active_spectators || 0);
-      }
-    } catch (error) {
-      console.error("Error fetching spectator count:", error);
-    }
-  }, [tournamentId]);
-
-  // Consolidated real-time subscriptions with improved score updates
-  useEffect(() => {
+  // Real-time connection management
+  const setupRealTimeConnection = useCallback(() => {
     if (!tournamentId) return;
 
-    // Initial fetches
-    fetchCurrentMatch();
-    fetchSpectatorCount();
-    setIsLoading(false);
+    console.log(`[${tabId}] Setting up real-time connection for overlay...`);
 
-    console.log(
-      `[${tabId}] Setting up real-time subscriptions for tournament:`,
-      tournamentId
-    );
-
-    // Cleanup existing connection
+    // Clean up existing connection
     if (channelRef.current) {
-      supabase.removeChannel(channelRef.current);
+      channelRef.current.unsubscribe();
+      channelRef.current = null;
     }
 
-    // Single channel for all real-time updates with performance optimization
-    const channel = supabase
-      .channel(`streaming-overlay-${tournamentId}-${tabId}`)
-      .on("system", { event: "disconnect" }, () => {
-        console.log(`[${tabId}] Real-time connection lost`);
-        setIsConnected(false);
-      })
-      .on("system", { event: "connect" }, () => {
-        console.log(`[${tabId}] Real-time connection established`);
-        setIsConnected(true);
-      })
+    // Create new connection with unique channel name
+    const channelName = `tournament_${tournamentId}_overlay_${tabId}`;
+    channelRef.current = supabase.channel(channelName);
+
+    // Subscribe to tournament updates
+    channelRef.current
+      .on(
+        "postgres_changes",
+        {
+          event: "UPDATE",
+          schema: "public",
+          table: "tournaments",
+          filter: `id=eq.${tournamentId}`,
+        },
+        (payload) => {
+          console.log(`[${tabId}] Tournament update received:`, payload);
+          actions.fetchTournament(tournamentId);
+          setLastUpdateTime(new Date());
+        }
+      )
       .on(
         "postgres_changes",
         {
@@ -332,83 +131,30 @@ export default function StreamingOverlayPage() {
           filter: `tournament_id=eq.${tournamentId}`,
         },
         (payload) => {
-          // Only process updates if tab is active to reduce resource usage
-          if (isTabActive) {
-            console.log(`[${tabId}] Match change detected:`, payload);
+          console.log(`[${tabId}] Match update received:`, payload);
 
-            // Check if this is a score update
+          // Check if this is a score update to prevent duplicate processing
+          if (payload.eventType === "UPDATE" && payload.new) {
+            const newMatch = payload.new as Match;
+            const lastUpdate = lastScoreUpdateRef.current;
+
             if (
-              payload.eventType === "UPDATE" &&
-              (payload.new.player1_score !== payload.old?.player1_score ||
-                payload.new.player2_score !== payload.old?.player2_score)
+              lastUpdate &&
+              lastUpdate.player1 === newMatch.player1_score &&
+              lastUpdate.player2 === newMatch.player2_score
             ) {
-              const newScores = {
-                player1: payload.new.player1_score,
-                player2: payload.new.player2_score,
-              };
-
-              // Prevent duplicate score updates
-              if (
-                !lastScoreUpdateRef.current ||
-                lastScoreUpdateRef.current.player1 !== newScores.player1 ||
-                lastScoreUpdateRef.current.player2 !== newScores.player2
-              ) {
-                console.log(
-                  `[${tabId}] Score update detected! Player1: ${payload.old?.player1_score}->${payload.new.player1_score}, Player2: ${payload.old?.player2_score}->${payload.new.player2_score}`
-                );
-
-                // Immediate score update for better responsiveness
-                setCurrentMatch((prevMatch) => {
-                  if (prevMatch && prevMatch.id === payload.new.id) {
-                    return {
-                      ...prevMatch,
-                      player1_score: payload.new.player1_score,
-                      player2_score: payload.new.player2_score,
-                      status: payload.new.status,
-                    };
-                  }
-                  return prevMatch;
-                });
-
-                lastScoreUpdateRef.current = newScores;
-                // Update last update time
-                setLastUpdateTime(new Date());
-
-                // Also fetch the full match data to ensure consistency
-                setTimeout(() => fetchCurrentMatch(), 100);
-              }
-            } else {
-              // For other match changes, fetch the full data
-              fetchCurrentMatch();
+              console.log(`[${tabId}] Duplicate score update, skipping`);
+              return;
             }
-          } else {
-            console.log(
-              `[${tabId}] Match change ignored (tab inactive):`,
-              payload
-            );
+
+            lastScoreUpdateRef.current = {
+              player1: newMatch.player1_score,
+              player2: newMatch.player2_score,
+            };
           }
-        }
-      )
-      .on(
-        "postgres_changes",
-        {
-          event: "*",
-          schema: "public",
-          table: "tournaments",
-          filter: `id=eq.${tournamentId}`,
-        },
-        (payload) => {
-          // Only process updates if tab is active
-          if (isTabActive) {
-            console.log(`[${tabId}] Tournament change detected:`, payload);
-            // Refresh tournament data to update media source
-            fetchTournament();
-          } else {
-            console.log(
-              `[${tabId}] Tournament change ignored (tab inactive):`,
-              payload
-            );
-          }
+
+          actions.fetchMatches(tournamentId);
+          setLastUpdateTime(new Date());
         }
       )
       .on(
@@ -419,44 +165,146 @@ export default function StreamingOverlayPage() {
           table: "tournament_spectators",
           filter: `tournament_id=eq.${tournamentId}`,
         },
-        () => {
-          // Only update spectator count if tab is active
-          if (isTabActive) {
-            fetchSpectatorCount();
-          }
+        (payload) => {
+          console.log(`[${tabId}] Spectator update received:`, payload);
+          actions.fetchSpectatorCount(tournamentId);
+          setLastUpdateTime(new Date());
         }
       )
-      .subscribe();
+      .subscribe((status) => {
+        console.log(`[${tabId}] Real-time connection status:`, status);
+        setIsConnected(status === "SUBSCRIBED");
+      });
 
-    channelRef.current = channel;
-
-    // Setup heartbeat to maintain connection
+    // Set up heartbeat to maintain connection
     heartbeatIntervalRef.current = setInterval(() => {
-      if (channel) {
-        console.log(`[${tabId}] Heartbeat sent`);
+      if (channelRef.current) {
+        channelRef.current.send({
+          type: "broadcast",
+          event: "heartbeat",
+          payload: { tabId, timestamp: Date.now() },
+        });
       }
     }, 30000); // Every 30 seconds
 
+    console.log(`[${tabId}] Real-time connection setup completed for overlay`);
+  }, [tournamentId, tabId, actions]);
+
+  // Cleanup function
+  const cleanup = useCallback(() => {
+    console.log(`[${tabId}] Cleaning up overlay resources...`);
+
+    // Stop webcam
+    stopWebcam();
+
+    // Clean up real-time connection
+    if (channelRef.current) {
+      channelRef.current.unsubscribe();
+      channelRef.current = null;
+    }
+
+    // Clean up heartbeat
+    if (heartbeatIntervalRef.current) {
+      clearInterval(heartbeatIntervalRef.current);
+      heartbeatIntervalRef.current = null;
+    }
+
+    // Clean up abort controller
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort();
+      abortControllerRef.current = null;
+    }
+
+    console.log(`[${tabId}] Overlay cleanup completed`);
+  }, [tabId, stopWebcam]);
+
+  // Tab visibility management
+  useEffect(() => {
+    const handleBeforeUnload = () => {
+      cleanup();
+    };
+
+    const handleVisibilityChange = () => {
+      const isVisible = !document.hidden;
+
+      if (isVisible) {
+        console.log(`[${tabId}] Tab became visible, refreshing data...`);
+        // Refresh data when tab becomes visible
+        actions.fetchTournament(tournamentId);
+        actions.fetchMatches(tournamentId);
+        actions.fetchSpectatorCount(tournamentId);
+      }
+    };
+
+    const handlePageShow = () => {
+      console.log(`[${tabId}] Page shown, refreshing data...`);
+      actions.fetchTournament(tournamentId);
+      actions.fetchMatches(tournamentId);
+      actions.fetchSpectatorCount(tournamentId);
+    };
+
+    const handlePageHide = () => {
+      console.log(`[${tabId}] Page hidden`);
+    };
+
+    // Add event listeners
+    window.addEventListener("beforeunload", handleBeforeUnload);
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+    window.addEventListener("pageshow", handlePageShow);
+    window.addEventListener("pagehide", handlePageHide);
+
     return () => {
-      console.log(`[${tabId}] Cleaning up overlay subscription`);
+      window.removeEventListener("beforeunload", handleBeforeUnload);
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
+      window.removeEventListener("pageshow", handlePageShow);
+      window.removeEventListener("pagehide", handlePageHide);
+    };
+  }, [cleanup, tabId, tournamentId, actions]);
+
+  // Initial data loading
+  useEffect(() => {
+    if (!tournamentId) return;
+
+    console.log(`[${tabId}] Loading initial data for overlay...`);
+
+    const loadInitialData = async () => {
+      try {
+        await Promise.all([
+          actions.fetchTournament(tournamentId),
+          actions.fetchMatches(tournamentId),
+          actions.fetchSpectatorCount(tournamentId),
+        ]);
+        console.log(`[${tabId}] Initial data loaded successfully for overlay`);
+      } catch (error) {
+        console.error(`[${tabId}] Error loading initial data:`, error);
+      }
+    };
+
+    loadInitialData();
+  }, [tournamentId, tabId, actions]);
+
+  // Set up real-time connection
+  useEffect(() => {
+    if (tournamentId && !isLoading) {
+      setupRealTimeConnection();
+    }
+
+    return () => {
       if (channelRef.current) {
-        supabase.removeChannel(channelRef.current);
+        channelRef.current.unsubscribe();
       }
       if (heartbeatIntervalRef.current) {
         clearInterval(heartbeatIntervalRef.current);
       }
-      if (abortControllerRef.current) {
-        abortControllerRef.current.abort();
-      }
     };
-  }, [
-    tournamentId,
-    fetchCurrentMatch,
-    fetchSpectatorCount,
-    fetchTournament,
-    tabId,
-    isTabActive,
-  ]);
+  }, [tournamentId, isLoading, setupRealTimeConnection]);
+
+  // Cleanup on unmount
+  useEffect(() => {
+    return () => {
+      cleanup();
+    };
+  }, [cleanup]);
 
   // Memoized YouTube embed URL with performance optimizations
   const embedUrl = useMemo(() => {
@@ -471,77 +319,43 @@ export default function StreamingOverlayPage() {
     return null;
   }, [tournament?.youtube_video_id]);
 
-  // Add performance optimizations for YouTube iframe
-  const [iframeLoaded, setIframeLoaded] = useState(false);
-  const [iframeError, setIframeError] = useState(false);
-
-  // Handle iframe load events
-  const handleIframeLoad = useCallback(() => {
-    console.log(`[${tabId}] YouTube iframe loaded successfully`);
-    setIframeLoaded(true);
-    setIframeError(false);
-  }, [tabId]);
-
-  const handleIframeError = useCallback(() => {
-    console.error(`[${tabId}] YouTube iframe failed to load`);
-    setIframeError(true);
-    setIframeLoaded(false);
-  }, [tabId]);
-
-  // Resource management for background tabs
+  // Auto-start webcam if media source is webcam
   useEffect(() => {
-    const handleVisibilityChange = () => {
-      const isVisible = !document.hidden;
-      console.log(
-        `[${tabId}] Tab visibility changed: ${isVisible ? "visible" : "hidden"}`
-      );
-      setIsTabActive(isVisible);
+    if (mediaSource === "webcam" && !webcamStream) {
+      startWebcam();
+    } else if (mediaSource !== "webcam" && webcamStream) {
+      stopWebcam();
+    }
+  }, [mediaSource, webcamStream, startWebcam, stopWebcam]);
 
-      // Pause/resume real-time updates based on visibility
-      if (isVisible) {
-        // Resume updates when tab becomes visible
-        fetchCurrentMatch();
-        fetchSpectatorCount();
-      }
-    };
-
-    const handlePageShow = () => {
-      console.log(`[${tabId}] Page shown - resuming updates`);
-      setIsTabActive(true);
-      fetchCurrentMatch();
-      fetchSpectatorCount();
-    };
-
-    const handlePageHide = () => {
-      console.log(`[${tabId}] Page hidden - pausing updates`);
-      setIsTabActive(false);
-    };
-
-    // Periodic refresh as fallback (every 30 seconds)
-    const periodicRefresh = setInterval(() => {
-      if (isTabActive && isConnected) {
-        console.log(`[${tabId}] Periodic refresh triggered`);
-        fetchCurrentMatch();
-        fetchSpectatorCount();
-      }
-    }, 30000);
-
-    document.addEventListener("visibilitychange", handleVisibilityChange);
-    window.addEventListener("pageshow", handlePageShow);
-    window.addEventListener("pagehide", handlePageHide);
-
-    return () => {
-      document.removeEventListener("visibilitychange", handleVisibilityChange);
-      window.removeEventListener("pageshow", handlePageShow);
-      window.removeEventListener("pagehide", handlePageHide);
-      clearInterval(periodicRefresh);
-    };
-  }, [tabId, fetchCurrentMatch, fetchSpectatorCount, isTabActive, isConnected]);
-
+  // Loading state
   if (isLoading) {
     return (
       <div className="min-h-screen bg-black flex items-center justify-center">
-        <div className="text-white text-2xl">Loading Stream Overlay...</div>
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-32 w-32 border-b-2 border-white mx-auto mb-4"></div>
+          <h2 className="text-white text-2xl font-bold mb-2">
+            Loading Stream Overlay...
+          </h2>
+          <p className="text-gray-400">Connecting to tournament data...</p>
+        </div>
+      </div>
+    );
+  }
+
+  // Error state
+  if (!tournament) {
+    return (
+      <div className="min-h-screen bg-black flex items-center justify-center">
+        <div className="text-center">
+          <h2 className="text-white text-2xl font-bold mb-2">
+            Tournament Not Found
+          </h2>
+          <p className="text-gray-400">
+            The tournament you&apos;re looking for doesn&apos;t exist or has
+            been removed.
+          </p>
+        </div>
       </div>
     );
   }
@@ -560,8 +374,6 @@ export default function StreamingOverlayPage() {
             allowFullScreen
             title="Live Stream"
             className="w-full h-full"
-            onLoad={handleIframeLoad}
-            onError={handleIframeError}
           />
         </div>
       )}
@@ -720,7 +532,7 @@ export default function StreamingOverlayPage() {
                   </motion.div>
                 )}
 
-                {/* Spectator Count & Refresh Button */}
+                {/* Spectator Count & Connection Status */}
                 <div className="flex items-center gap-4">
                   <div className="flex items-center gap-2 bg-black/50 px-3 py-2 rounded-lg">
                     <Users className="h-4 w-4 text-blue-400" />
@@ -730,9 +542,8 @@ export default function StreamingOverlayPage() {
                     <span className="text-sm text-gray-300">spectators</span>
                   </div>
 
-                  {/* Connection Status & Manual Refresh */}
+                  {/* Connection Status */}
                   <div className="flex items-center gap-2">
-                    {/* Connection Status */}
                     <div
                       className={`flex items-center gap-1 px-2 py-1 rounded text-xs ${
                         isConnected
