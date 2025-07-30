@@ -444,6 +444,14 @@ export function TournamentProvider({ children }: TournamentProviderProps) {
   const updateMatchScore = useCallback(
     async (matchId: string, player1Score: number, player2Score: number) => {
       try {
+        // Immediately update the state optimistically for instant UI feedback
+        dispatch({
+          type: "UPDATE_MATCH_SCORE",
+          payload: { matchId, player1Score, player2Score },
+        });
+        dispatch({ type: "SET_LAST_UPDATE", payload: new Date() });
+
+        // Then update the database
         const { error } = await supabase
           .from("matches")
           .update({
@@ -456,14 +464,20 @@ export function TournamentProvider({ children }: TournamentProviderProps) {
           })
           .eq("id", matchId);
 
-        if (error) throw error;
+        if (error) {
+          // If database update fails, revert the optimistic update
+          console.error(
+            "Database update failed, reverting optimistic update:",
+            error
+          );
+          // Fetch the actual data to revert
+          await fetchMatches(matchId.split("_")[0]); // Extract tournament ID from match ID
+          throw error;
+        }
 
-        // Optimistically update the state
-        dispatch({
-          type: "UPDATE_MATCH_SCORE",
-          payload: { matchId, player1Score, player2Score },
-        });
-        dispatch({ type: "SET_LAST_UPDATE", payload: new Date() });
+        console.log(
+          `Score updated successfully: ${player1Score} - ${player2Score}`
+        );
       } catch (error) {
         console.error("Error updating match score:", error);
         dispatch({

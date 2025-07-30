@@ -7,7 +7,6 @@ import { motion, AnimatePresence } from "framer-motion";
 import { Trophy, Users, Target, Zap, Camera } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { useTournament } from "@/lib/contexts/TournamentContext";
-import type { Match } from "@/lib/contexts/TournamentContext";
 
 export default function StreamingOverlayPage() {
   const params = useParams();
@@ -26,10 +25,6 @@ export default function StreamingOverlayPage() {
   const channelRef = useRef<ReturnType<typeof supabase.channel> | null>(null);
   const abortControllerRef = useRef<AbortController | null>(null);
   const heartbeatIntervalRef = useRef<NodeJS.Timeout | null>(null);
-  const lastScoreUpdateRef = useRef<{
-    player1: number;
-    player2: number;
-  } | null>(null);
 
   // Generate unique tab ID to prevent conflicts
   const tabId = useMemo(() => {
@@ -133,26 +128,7 @@ export default function StreamingOverlayPage() {
         (payload) => {
           console.log(`[${tabId}] Match update received:`, payload);
 
-          // Check if this is a score update to prevent duplicate processing
-          if (payload.eventType === "UPDATE" && payload.new) {
-            const newMatch = payload.new as Match;
-            const lastUpdate = lastScoreUpdateRef.current;
-
-            if (
-              lastUpdate &&
-              lastUpdate.player1 === newMatch.player1_score &&
-              lastUpdate.player2 === newMatch.player2_score
-            ) {
-              console.log(`[${tabId}] Duplicate score update, skipping`);
-              return;
-            }
-
-            lastScoreUpdateRef.current = {
-              player1: newMatch.player1_score,
-              player2: newMatch.player2_score,
-            };
-          }
-
+          // Immediate update for instant responsiveness
           actions.fetchMatches(tournamentId);
           setLastUpdateTime(new Date());
         }
@@ -509,6 +485,9 @@ export default function StreamingOverlayPage() {
                       {lastUpdateTime && (
                         <div className="mt-1 text-xs text-white/60">
                           Updated: {lastUpdateTime.toLocaleTimeString()}
+                          <span className="ml-2 text-green-400 animate-pulse">
+                            ●
+                          </span>
                         </div>
                       )}
                     </div>

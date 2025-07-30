@@ -88,10 +88,6 @@ export default function StreamingControlPage() {
   const channelRef = useRef<ReturnType<typeof supabase.channel> | null>(null);
   const abortControllerRef = useRef<AbortController | null>(null);
   const heartbeatIntervalRef = useRef<NodeJS.Timeout | null>(null);
-  const lastScoreUpdateRef = useRef<{
-    player1: number;
-    player2: number;
-  } | null>(null);
 
   // Generate unique tab ID to prevent conflicts
   const tabId = useMemo(() => {
@@ -164,31 +160,8 @@ export default function StreamingControlPage() {
         (payload) => {
           console.log(`[${tabId}] Match change detected in control:`, payload);
 
-          // Optimized score update handling
-          if (
-            payload.eventType === "UPDATE" &&
-            (payload.new.player1_score !== payload.old?.player1_score ||
-              payload.new.player2_score !== payload.old?.player2_score)
-          ) {
-            const newScores = {
-              player1: payload.new.player1_score,
-              player2: payload.new.player2_score,
-            };
-
-            // Prevent duplicate score updates
-            if (
-              !lastScoreUpdateRef.current ||
-              lastScoreUpdateRef.current.player1 !== newScores.player1 ||
-              lastScoreUpdateRef.current.player2 !== newScores.player2
-            ) {
-              console.log(
-                `[${tabId}] Score update: Player1: ${payload.old?.player1_score}->${payload.new.player1_score}, Player2: ${payload.old?.player2_score}->${payload.new.player2_score}`
-              );
-              lastScoreUpdateRef.current = newScores;
-            }
-          }
-
-          // Immediate refresh for better responsiveness
+          // Immediate refresh for instant updates - no duplicate prevention needed
+          // since the context handles optimistic updates
           actions.fetchMatches(tournamentId);
         }
       )
@@ -236,6 +209,19 @@ export default function StreamingControlPage() {
         console.log(
           `[${tabId}] Updating match ${matchId}: ${player1Score} - ${player2Score}`
         );
+
+        // Add visual feedback
+        const button = document.activeElement as HTMLButtonElement;
+        if (button) {
+          const originalText = button.textContent;
+          button.textContent = "Updating...";
+          button.disabled = true;
+
+          setTimeout(() => {
+            button.textContent = originalText;
+            button.disabled = false;
+          }, 500);
+        }
 
         await actions.updateMatchScore(matchId, player1Score, player2Score);
         console.log(`[${tabId}] Score updated successfully`);
@@ -565,20 +551,6 @@ export default function StreamingControlPage() {
     console.log(`[${tabId}] Manual refresh triggered`);
     try {
       // Refresh all data manually
-      const fetchTournament = async () => {
-        try {
-          const { data, error } = await supabase
-            .from("tournaments")
-            .select("*")
-            .eq("id", tournamentId)
-            .single();
-          if (error) throw error;
-          // Tournament will be updated via Context API
-          actions.fetchTournament(tournamentId);
-        } catch (error) {
-          console.error("Error fetching tournament:", error);
-        }
-      };
 
       await Promise.all([
         actions.fetchTournament(tournamentId),
