@@ -212,22 +212,22 @@ export default function TournamentManagePage() {
         "@/lib/bracket"
       );
 
-      // Convert participants to bracket format
-      const bracketParticipants = tournament.tournament_participants.map(
-        (p) => ({
-          id: p.id,
-          tournament_id: p.tournament_id,
-          user_id: p.user_id,
-          seed: p.seed,
-          joined_at: p.joined_at,
-          user: p.user,
-        })
+      // Convert participants to bracket format - ensure we have valid user IDs
+      const validParticipants = tournament.tournament_participants.filter(
+        (p) => p.user_id && p.user?.display_name
       );
 
-      // Generate bracket
-      const participantIds = bracketParticipants.map((p) => p.user_id);
+      if (validParticipants.length < 2) {
+        setError("Need at least 2 valid participants to start tournament");
+        return;
+      }
+
+      // Generate bracket using user IDs
+      const participantIds = validParticipants.map((p) => p.user_id);
       const { createMatches } =
         generateSingleEliminationBracket(participantIds);
+
+      console.log("Generated matches:", createMatches);
 
       // Create tournament phase first
       const { data: phaseData, error: phaseError } = await supabase
@@ -236,7 +236,7 @@ export default function TournamentManagePage() {
           tournament_id: tournament.id,
           phase_type: "elimination",
           phase_order: 1,
-          status: "pending",
+          status: "in_progress", // Start as in_progress since we're starting the tournament
         })
         .select()
         .single();
@@ -580,25 +580,50 @@ export default function TournamentManagePage() {
                   </div>
                 )}
 
-                {tournament.status === "in_progress" && (
-                  <div className="space-y-3">
-                    <div className="flex items-center gap-3 p-4 bg-yellow-50 dark:bg-yellow-900/20 rounded-lg">
-                      <Trophy className="h-5 w-5 text-yellow-600 dark:text-yellow-400" />
-                      <div className="flex-1">
-                        <h4 className="font-medium">Tournament in Progress</h4>
-                        <p className="text-sm text-muted-foreground">
-                          Manage ongoing matches and brackets
-                        </p>
-                      </div>
-                      <Button asChild>
-                        <Link href={`/tournaments/${tournament.id}/bracket`}>
-                          <Play className="mr-2 h-4 w-4" />
-                          View Bracket
-                        </Link>
-                      </Button>
+                {/* Always show bracket link, but with different styling based on status */}
+                <div className="space-y-3">
+                  <div
+                    className={`flex items-center gap-3 p-4 rounded-lg ${
+                      tournament.status === "in_progress"
+                        ? "bg-yellow-50 dark:bg-yellow-900/20"
+                        : tournament.status === "completed"
+                        ? "bg-green-50 dark:bg-green-900/20"
+                        : "bg-blue-50 dark:bg-blue-900/20"
+                    }`}
+                  >
+                    <Trophy
+                      className={`h-5 w-5 ${
+                        tournament.status === "in_progress"
+                          ? "text-yellow-600 dark:text-yellow-400"
+                          : tournament.status === "completed"
+                          ? "text-green-600 dark:text-green-400"
+                          : "text-blue-600 dark:text-blue-400"
+                      }`}
+                    />
+                    <div className="flex-1">
+                      <h4 className="font-medium">
+                        {tournament.status === "in_progress"
+                          ? "Tournament in Progress"
+                          : tournament.status === "completed"
+                          ? "Tournament Completed"
+                          : "Tournament Bracket"}
+                      </h4>
+                      <p className="text-sm text-muted-foreground">
+                        {tournament.status === "in_progress"
+                          ? "Manage ongoing matches and brackets"
+                          : tournament.status === "completed"
+                          ? "View final results and champion"
+                          : "View tournament bracket and participants"}
+                      </p>
                     </div>
+                    <Button asChild>
+                      <Link href={`/tournaments/${tournament.id}/bracket`}>
+                        <Play className="mr-2 h-4 w-4" />
+                        View Bracket
+                      </Link>
+                    </Button>
                   </div>
-                )}
+                </div>
 
                 <Separator />
 

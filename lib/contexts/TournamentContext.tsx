@@ -68,6 +68,8 @@ interface TournamentState {
   isLoading: boolean;
   error: string | null;
   lastUpdate: Date | null;
+  tabId: string | null;
+  isConnected: boolean;
 }
 
 // Action types
@@ -84,6 +86,8 @@ type TournamentAction =
       payload: { matchId: string; player1Score: number; player2Score: number };
     }
   | { type: "SET_LAST_UPDATE"; payload: Date }
+  | { type: "SET_TAB_ID"; payload: string }
+  | { type: "SET_CONNECTION_STATUS"; payload: boolean }
   | { type: "RESET_STATE" };
 
 // Initial state
@@ -96,6 +100,8 @@ const initialState: TournamentState = {
   isLoading: true,
   error: null,
   lastUpdate: null,
+  tabId: null,
+  isConnected: false,
 };
 
 // Reducer
@@ -161,6 +167,12 @@ function tournamentReducer(
     case "SET_LAST_UPDATE":
       return { ...state, lastUpdate: action.payload };
 
+    case "SET_TAB_ID":
+      return { ...state, tabId: action.payload };
+
+    case "SET_CONNECTION_STATUS":
+      return { ...state, isConnected: action.payload };
+
     case "RESET_STATE":
       return initialState;
 
@@ -184,6 +196,8 @@ interface TournamentContextType {
     ) => Promise<void>;
     setCurrentMatch: (match: Match | null) => void;
     resetState: () => void;
+    setTabId: (tabId: string) => void;
+    setConnectionStatus: (isConnected: boolean) => void;
   };
 }
 
@@ -495,6 +509,16 @@ export function TournamentProvider({ children }: TournamentProviderProps) {
     dispatch({ type: "SET_CURRENT_MATCH", payload: match });
   }, []);
 
+  // Set tab ID
+  const setTabId = useCallback((tabId: string) => {
+    dispatch({ type: "SET_TAB_ID", payload: tabId });
+  }, []);
+
+  // Set connection status
+  const setConnectionStatus = useCallback((isConnected: boolean) => {
+    dispatch({ type: "SET_CONNECTION_STATUS", payload: isConnected });
+  }, []);
+
   // Reset state
   const resetState = useCallback(() => {
     dispatch({ type: "RESET_STATE" });
@@ -510,6 +534,8 @@ export function TournamentProvider({ children }: TournamentProviderProps) {
       updateMatchScore,
       setCurrentMatch,
       resetState,
+      setTabId,
+      setConnectionStatus,
     }),
     [
       fetchTournament,
@@ -519,6 +545,8 @@ export function TournamentProvider({ children }: TournamentProviderProps) {
       updateMatchScore,
       setCurrentMatch,
       resetState,
+      setTabId,
+      setConnectionStatus,
     ]
   );
 

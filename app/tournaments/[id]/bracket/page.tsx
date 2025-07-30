@@ -149,36 +149,64 @@ export default function TournamentBracketPage() {
     try {
       console.log("Fetching matches for tournament:", params.id);
 
-      const { data, error } = await supabase
+      // First try to fetch basic match data
+      const { data: basicMatches, error: basicError } = await supabase
         .from("matches")
-        .select(
-          `
-          *,
-          player1:users!matches_player1_id_fkey(id, display_name),
-          player2:users!matches_player2_id_fkey(id, display_name),
-          winner:users!matches_winner_id_fkey(id, display_name)
-        `
-        )
+        .select("*")
         .eq("tournament_id", params.id)
         .order("round", { ascending: true })
         .order("match_number", { ascending: true });
 
-      if (error) {
-        console.error("Error fetching matches:", error);
-        throw error;
+      if (basicError) {
+        console.error("Error fetching basic matches:", basicError);
+        throw basicError;
       }
 
-      console.log("Fetched matches:", data);
-      setMatches(data || []);
+      console.log("Basic matches fetched:", basicMatches);
 
-      if (!data || data.length === 0) {
+      // If we have matches, fetch player details separately
+      if (basicMatches && basicMatches.length > 0) {
+        const playerIds = new Set<string>();
+        basicMatches.forEach((match) => {
+          if (match.player1_id) playerIds.add(match.player1_id);
+          if (match.player2_id) playerIds.add(match.player2_id);
+          if (match.winner_id) playerIds.add(match.winner_id);
+        });
+
+        const { data: players, error: playersError } = await supabase
+          .from("users")
+          .select("id, display_name")
+          .in("id", Array.from(playerIds));
+
+        if (playersError) {
+          console.error("Error fetching players:", playersError);
+          // Continue without player details
+        }
+
+        // Combine match data with player details
+        const enrichedMatches = basicMatches.map((match) => ({
+          ...match,
+          player1: players?.find((p) => p.id === match.player1_id),
+          player2: players?.find((p) => p.id === match.player2_id),
+          winner: players?.find((p) => p.id === match.winner_id),
+        }));
+
+        console.log("Enriched matches:", enrichedMatches);
+        setMatches(enrichedMatches);
+      } else {
         console.log("No matches found for tournament");
+        setMatches([]);
       }
     } catch (error: unknown) {
+      console.error("Error fetching matches:", error);
+      console.error("Error type:", typeof error);
+      console.error("Error details:", JSON.stringify(error, null, 2));
+
       if (error instanceof Error) {
-        console.error("Error fetching matches:", error);
-        setError("Failed to load matches");
+        console.error("Error fetching matches:", error.message);
       }
+      // Don't set error state here as it might be a temporary issue
+      setMatches([]);
     }
   }, [params.id]);
 
@@ -186,29 +214,68 @@ export default function TournamentBracketPage() {
     if (!params.id) return;
 
     try {
-      const { data, error } = await supabase
+      console.log("Fetching round robin matches for tournament:", params.id);
+
+      // First try to fetch basic round robin match data
+      const { data: basicMatches, error: basicError } = await supabase
         .from("round_robin_matches")
-        .select(
-          `
-          *,
-          player1:users!round_robin_matches_player1_id_fkey(id, display_name),
-          player2:users!round_robin_matches_player2_id_fkey(id, display_name),
-          winner:users!round_robin_matches_winner_id_fkey(id, display_name)
-        `
-        )
+        .select("*")
         .eq("tournament_id", params.id)
         .order("created_at", { ascending: true });
 
-      if (error) {
-        console.error("Error fetching round robin matches:", error);
-        throw error;
+      if (basicError) {
+        console.error("Error fetching basic round robin matches:", basicError);
+        throw basicError;
       }
 
-      setRoundRobinMatches(data || []);
-    } catch (error: unknown) {
-      if (error instanceof Error) {
-        console.error("Error fetching round robin matches:", error);
+      console.log("Basic round robin matches fetched:", basicMatches);
+
+      // If we have matches, fetch player details separately
+      if (basicMatches && basicMatches.length > 0) {
+        const playerIds = new Set<string>();
+        basicMatches.forEach((match) => {
+          if (match.player1_id) playerIds.add(match.player1_id);
+          if (match.player2_id) playerIds.add(match.player2_id);
+          if (match.winner_id) playerIds.add(match.winner_id);
+        });
+
+        const { data: players, error: playersError } = await supabase
+          .from("users")
+          .select("id, display_name")
+          .in("id", Array.from(playerIds));
+
+        if (playersError) {
+          console.error(
+            "Error fetching players for round robin:",
+            playersError
+          );
+          // Continue without player details
+        }
+
+        // Combine match data with player details
+        const enrichedMatches = basicMatches.map((match) => ({
+          ...match,
+          player1: players?.find((p) => p.id === match.player1_id),
+          player2: players?.find((p) => p.id === match.player2_id),
+          winner: players?.find((p) => p.id === match.winner_id),
+        }));
+
+        console.log("Enriched round robin matches:", enrichedMatches);
+        setRoundRobinMatches(enrichedMatches);
+      } else {
+        console.log("No round robin matches found for tournament");
+        setRoundRobinMatches([]);
       }
+    } catch (error: unknown) {
+      console.error("Error fetching round robin matches:", error);
+      console.error("Error type:", typeof error);
+      console.error("Error details:", JSON.stringify(error, null, 2));
+
+      if (error instanceof Error) {
+        console.error("Error fetching round robin matches:", error.message);
+      }
+      // Don't set error state here as it might be a temporary issue
+      setRoundRobinMatches([]);
     }
   }, [params.id]);
 
@@ -216,6 +283,8 @@ export default function TournamentBracketPage() {
     if (!params.id) return;
 
     try {
+      console.log("Fetching phases for tournament:", params.id);
+
       const { data, error } = await supabase
         .from("tournament_phases")
         .select("*")
@@ -227,52 +296,133 @@ export default function TournamentBracketPage() {
         throw error;
       }
 
+      console.log("Phases fetched:", data);
       setPhases(data || []);
     } catch (error: unknown) {
+      console.error("Error fetching phases:", error);
+      console.error("Error type:", typeof error);
+      console.error("Error details:", JSON.stringify(error, null, 2));
+
       if (error instanceof Error) {
-        console.error("Error fetching phases:", error);
+        console.error("Error fetching phases:", error.message);
       }
+      // Don't set error state here as it might be a temporary issue
+      setPhases([]);
     }
   }, [params.id]);
 
   const fetchTournamentAndBracket = useCallback(async () => {
-    if (!params.id) return;
+    if (!params.id) {
+      console.error("No tournament ID provided");
+      setError("No tournament ID provided");
+      return;
+    }
+
+    console.log("Fetching tournament with ID:", params.id);
+    console.log("Params object:", params);
 
     try {
       setLoading(true);
       setError(null);
 
-      // Fetch tournament details
+      // Fetch tournament details - start with basic query
+      console.log("Executing Supabase query for tournament ID:", params.id);
+
       const { data: tournamentData, error: tournamentError } = await supabase
         .from("tournaments")
-        .select(
-          `
-          *,
-          created_by_user:users!tournaments_created_by_fkey(*),
-          winner:users!tournaments_winner_id_fkey(*),
-          tournament_participants(
-            *,
-            user:users(*)
-          )
-        `
-        )
+        .select("*")
         .eq("id", params.id)
         .single();
 
+      console.log("Basic tournament query result:", {
+        tournamentData,
+        tournamentError,
+      });
+
       if (tournamentError) {
         console.error("Error fetching tournament:", tournamentError);
-        throw tournamentError;
+        if (tournamentError.code === "PGRST116") {
+          setError(
+            "Tournament not found. Please check the URL or contact the tournament organizer."
+          );
+        } else {
+          setError("Failed to load tournament: " + tournamentError.message);
+        }
+        return;
       }
 
-      console.log("Tournament data:", tournamentData);
-      setTournament(tournamentData);
+      // If basic query succeeds, fetch related data
+      if (tournamentData) {
+        console.log(
+          "Basic tournament data fetched successfully, fetching related data..."
+        );
 
-      // Fetch phases, matches, and round robin matches
-      await Promise.all([
-        fetchPhases(),
-        fetchMatches(),
-        fetchRoundRobinMatches(),
-      ]);
+        // Fetch related data separately to avoid complex join issues
+        const [participantsResult, creatorResult, winnerResult] =
+          await Promise.all([
+            supabase
+              .from("tournament_participants")
+              .select(
+                `
+              *,
+              user:users(id, display_name, email)
+            `
+              )
+              .eq("tournament_id", params.id),
+            tournamentData.created_by
+              ? supabase
+                  .from("users")
+                  .select("*")
+                  .eq("id", tournamentData.created_by)
+                  .single()
+              : Promise.resolve({ data: null, error: null }),
+            tournamentData.winner_id
+              ? supabase
+                  .from("users")
+                  .select("*")
+                  .eq("id", tournamentData.winner_id)
+                  .single()
+              : Promise.resolve({ data: null, error: null }),
+          ]);
+
+        console.log("Related data fetch results:", {
+          participants: participantsResult,
+          creator: creatorResult,
+          winner: winnerResult,
+        });
+
+        // Combine the data
+        const enrichedTournamentData = {
+          ...tournamentData,
+          tournament_participants: participantsResult.data || [],
+          created_by_user: creatorResult.data,
+          winner: winnerResult.data,
+        };
+
+        console.log("Enriched tournament data:", enrichedTournamentData);
+        setTournament(enrichedTournamentData);
+      }
+
+      // Fetch phases, matches, and round robin matches - handle each separately
+      console.log("Fetching related data...");
+
+      try {
+        await fetchPhases();
+      } catch (error) {
+        console.error("Error in fetchPhases:", error);
+      }
+
+      try {
+        await fetchMatches();
+      } catch (error) {
+        console.error("Error in fetchMatches:", error);
+      }
+
+      try {
+        await fetchRoundRobinMatches();
+      } catch (error) {
+        console.error("Error in fetchRoundRobinMatches:", error);
+      }
 
       // Check if tournament is in progress but has no matches
       if (
@@ -292,9 +442,14 @@ export default function TournamentBracketPage() {
         }
       }
     } catch (error: unknown) {
+      console.error("Error fetching tournament:", error);
+      console.error("Error type:", typeof error);
+      console.error("Error details:", JSON.stringify(error, null, 2));
+
       if (error instanceof Error) {
-        console.error("Error fetching tournament:", error);
-        setError("Failed to load tournament");
+        setError("Failed to load tournament: " + error.message);
+      } else {
+        setError("Failed to load tournament: Unknown error occurred");
       }
     } finally {
       setLoading(false);
@@ -687,6 +842,15 @@ export default function TournamentBracketPage() {
       // Refresh bracket data
       await fetchMatches();
 
+      // Update player statistics for this match
+      await updatePlayerStatsForMatch(
+        roundNumber,
+        matchNumber,
+        winnerId,
+        player1Score,
+        player2Score
+      );
+
       // Check if tournament is complete by counting remaining matches
       const { data: remainingMatches } = await supabase
         .from("matches")
@@ -781,6 +945,11 @@ export default function TournamentBracketPage() {
             console.log(
               `Tournament completed! Champion: ${tournamentWinner.display_name}`
             );
+
+            // Update player statistics for the tournament
+            if (params.id) {
+              await updatePlayerStatsForTournament(params.id as string);
+            }
 
             // Debug: Check if tournament was properly updated
             const { data: updatedTournament, error: checkError } =
@@ -1269,6 +1438,191 @@ export default function TournamentBracketPage() {
     }
   };
 
+  // Function to update player statistics for a single match
+  const updatePlayerStatsForMatch = async (
+    roundNumber: number,
+    matchNumber: number,
+    winnerId: string,
+    player1Score: number,
+    player2Score: number
+  ) => {
+    try {
+      console.log("Updating player statistics for match:", {
+        roundNumber,
+        matchNumber,
+        winnerId,
+        player1Score,
+        player2Score,
+      });
+
+      // Get the match details to find player IDs
+      const { data: match, error: matchError } = await supabase
+        .from("matches")
+        .select("player1_id, player2_id, tournament_id")
+        .eq("tournament_id", params.id)
+        .eq("round", roundNumber)
+        .eq("match_number", matchNumber)
+        .single();
+
+      if (matchError || !match) {
+        console.error("Error fetching match details:", matchError);
+        return;
+      }
+
+      // Update statistics for both players
+      if (match.player1_id) {
+        // First get current stats
+        const { data: player1Stats, error: player1FetchError } = await supabase
+          .from("tournament_participants")
+          .select("matches_played, matches_won")
+          .eq("tournament_id", match.tournament_id)
+          .eq("user_id", match.player1_id)
+          .single();
+
+        if (!player1FetchError && player1Stats) {
+          const { error: player1Error } = await supabase
+            .from("tournament_participants")
+            .update({
+              matches_played: (player1Stats.matches_played || 0) + 1,
+              matches_won:
+                (player1Stats.matches_won || 0) +
+                (match.player1_id === winnerId ? 1 : 0),
+            })
+            .eq("tournament_id", match.tournament_id)
+            .eq("user_id", match.player1_id);
+
+          if (player1Error) {
+            console.error("Error updating player1 stats:", player1Error);
+          }
+        }
+      }
+
+      if (match.player2_id) {
+        // First get current stats
+        const { data: player2Stats, error: player2FetchError } = await supabase
+          .from("tournament_participants")
+          .select("matches_played, matches_won")
+          .eq("tournament_id", match.tournament_id)
+          .eq("user_id", match.player2_id)
+          .single();
+
+        if (!player2FetchError && player2Stats) {
+          const { error: player2Error } = await supabase
+            .from("tournament_participants")
+            .update({
+              matches_played: (player2Stats.matches_played || 0) + 1,
+              matches_won:
+                (player2Stats.matches_won || 0) +
+                (match.player2_id === winnerId ? 1 : 0),
+            })
+            .eq("tournament_id", match.tournament_id)
+            .eq("user_id", match.player2_id);
+
+          if (player2Error) {
+            console.error("Error updating player2 stats:", player2Error);
+          }
+        }
+      }
+
+      console.log("Player statistics updated for match");
+    } catch (error) {
+      console.error("Error updating player statistics for match:", error);
+    }
+  };
+
+  // Function to update player statistics when tournament completes
+  const updatePlayerStatsForTournament = async (tournamentId: string) => {
+    try {
+      console.log("Updating player statistics for tournament:", tournamentId);
+
+      // Get all completed matches for this tournament
+      const { data: completedMatches, error: matchesError } = await supabase
+        .from("matches")
+        .select("player1_id, player2_id, winner_id")
+        .eq("tournament_id", tournamentId)
+        .eq("status", "completed");
+
+      if (matchesError) {
+        console.error("Error fetching completed matches:", matchesError);
+        return;
+      }
+
+      // Get all round robin matches for this tournament
+      const { data: roundRobinMatches, error: rrError } = await supabase
+        .from("round_robin_matches")
+        .select("player1_id, player2_id, winner_id")
+        .eq("tournament_id", tournamentId)
+        .eq("status", "completed");
+
+      if (rrError) {
+        console.error("Error fetching round robin matches:", rrError);
+        return;
+      }
+
+      // Combine all matches
+      const allMatches = [
+        ...(completedMatches || []),
+        ...(roundRobinMatches || []),
+      ];
+
+      // Calculate statistics for each player
+      const playerStats = new Map<string, { wins: number; total: number }>();
+
+      allMatches.forEach((match) => {
+        // Count matches for player1
+        if (match.player1_id) {
+          const current = playerStats.get(match.player1_id) || {
+            wins: 0,
+            total: 0,
+          };
+          current.total++;
+          if (match.winner_id === match.player1_id) {
+            current.wins++;
+          }
+          playerStats.set(match.player1_id, current);
+        }
+
+        // Count matches for player2
+        if (match.player2_id) {
+          const current = playerStats.get(match.player2_id) || {
+            wins: 0,
+            total: 0,
+          };
+          current.total++;
+          if (match.winner_id === match.player2_id) {
+            current.wins++;
+          }
+          playerStats.set(match.player2_id, current);
+        }
+      });
+
+      console.log("Calculated player stats:", playerStats);
+
+      // Update tournament participants with their statistics
+      for (const [playerId, stats] of playerStats.entries()) {
+        const { error: updateError } = await supabase
+          .from("tournament_participants")
+          .update({
+            matches_played: stats.total,
+            matches_won: stats.wins,
+          })
+          .eq("tournament_id", tournamentId)
+          .eq("user_id", playerId);
+
+        if (updateError) {
+          console.error(
+            `Error updating stats for player ${playerId}:`,
+            updateError
+          );
+        }
+      }
+
+      console.log("Player statistics updated successfully");
+    } catch (error) {
+      console.error("Error updating player statistics:", error);
+    }
+  };
+
   // Manual function to force update tournament status (for debugging)
   const forceUpdateTournamentStatus = async () => {
     try {
@@ -1546,6 +1900,73 @@ export default function TournamentBracketPage() {
               champion! 🏆
             </AlertDescription>
           </Alert>
+        )}
+
+        {/* Tournament Not Started - Show Participants */}
+        {tournament.status === "open" && (
+          <Card className="mb-6">
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <Users className="h-5 w-5" />
+                Tournament Participants
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="space-y-4">
+                <p className="text-muted-foreground">
+                  This tournament hasn&apos;t started yet.{" "}
+                  {tournament.tournament_participants?.length || 0} participants
+                  have registered.
+                </p>
+
+                {tournament.tournament_participants &&
+                  tournament.tournament_participants.length > 0 && (
+                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+                      {tournament.tournament_participants.map(
+                        (participant, index) => (
+                          <div
+                            key={participant.id}
+                            className="flex items-center gap-3 p-3 rounded-lg bg-muted/50"
+                          >
+                            <div className="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center text-sm font-medium">
+                              {index + 1}
+                            </div>
+                            <div>
+                              <p className="font-medium">
+                                {participant.user?.display_name ||
+                                  "Unknown Player"}
+                              </p>
+                              <p className="text-xs text-muted-foreground">
+                                Joined{" "}
+                                {new Date(
+                                  participant.joined_at
+                                ).toLocaleDateString()}
+                              </p>
+                            </div>
+                          </div>
+                        )
+                      )}
+                    </div>
+                  )}
+
+                {canGenerateBracket() && (
+                  <div className="mt-4 p-4 bg-blue-50 dark:bg-blue-900/20 rounded-lg border border-blue-200 dark:border-blue-800">
+                    <p className="text-sm text-blue-800 dark:text-blue-200 mb-3">
+                      Ready to start the tournament? Generate the bracket to
+                      begin.
+                    </p>
+                    <Button
+                      onClick={handleGenerateBracket}
+                      className="bg-blue-600 hover:bg-blue-700"
+                    >
+                      <Play className="mr-2 h-4 w-4" />
+                      Generate Bracket
+                    </Button>
+                  </div>
+                )}
+              </div>
+            </CardContent>
+          </Card>
         )}
 
         {/* Phase Indicator */}

@@ -5,7 +5,7 @@ import { useEffect, useState } from "react";
 import { supabase } from "@/lib/supabase";
 import { PlayerStats } from "@/lib/types";
 import { Navigation } from "@/components/navigation";
-import { useOptimizedFetch } from "@/lib/hooks/useOptimizedFetch";
+
 import ErrorBoundary from "@/lib/utils/error-boundary";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -75,19 +75,65 @@ export default function LeaderboardPage() {
       // Debug: Check raw data first
       console.log("Fetching leaderboard data...");
 
-      const { data, error } = await supabase
+      // Test basic Supabase connection first
+      console.log("Testing Supabase connection...");
+      const { data: testData, error: testError } = await supabase
+        .from("users")
+        .select("id, display_name")
+        .limit(1);
+
+      if (testError) {
+        console.error("Supabase connection test failed:", testError);
+        throw new Error("Database connection failed: " + testError.message);
+      } else {
+        console.log("Supabase connection test successful:", testData);
+      }
+
+      // Try the main player_stats view first
+      console.log("Attempting to fetch from player_stats view...");
+      const { data: initialData, error: initialError } = await supabase
         .from("player_stats")
         .select("*")
         .order("tournaments_won", { ascending: false })
         .order("win_percentage", { ascending: false });
 
-      if (error) {
-        console.error("Error fetching player_stats:", error);
-        throw error;
+      let finalData = initialData;
+
+      if (initialError) {
+        console.error("Error fetching player_stats:", initialError);
+        console.error("Error details:", JSON.stringify(initialError, null, 2));
+        console.log("Trying simple_player_stats view as fallback...");
+
+        // Try the simpler view as fallback
+        const { data: simpleData, error: simpleError } = await supabase
+          .from("simple_player_stats")
+          .select("*")
+          .order("tournaments_won", { ascending: false })
+          .order("win_percentage", { ascending: false });
+
+        if (simpleError) {
+          console.error("Error fetching simple_player_stats:", simpleError);
+          console.error(
+            "Simple error details:",
+            JSON.stringify(simpleError, null, 2)
+          );
+          throw simpleError;
+        }
+
+        finalData = simpleData;
+        console.log("Successfully fetched from simple_player_stats view");
+      } else {
+        console.log("Successfully fetched from player_stats view");
       }
 
-      console.log("Player stats data:", data);
-      setPlayers(data || []);
+      // If both views failed, try manual calculation
+      if (!finalData || finalData.length === 0) {
+        console.log("Both views failed, trying manual calculation...");
+        finalData = await calculatePlayerStatsManually();
+      }
+
+      console.log("Player stats data:", finalData);
+      setPlayers(finalData || []);
 
       // Debug: Also check tournaments and matches
       const { data: tournaments, error: tournamentsError } = await supabase
@@ -140,6 +186,121 @@ export default function LeaderboardPage() {
       setDemoData();
     } finally {
       setLoading(false);
+    }
+  };
+
+  const calculatePlayerStatsManually = async (): Promise<PlayerStats[]> => {
+    try {
+      console.log("Calculating player stats manually...");
+
+      // Fetch all users who are players or admins
+      const { data: users, error: usersError } = await supabase
+        .from("users")
+        .select("id, display_name")
+        .in("role", ["player", "admin"]);
+
+      if (usersError) {
+        console.error("Error fetching users:", usersError);
+        return [];
+      }
+
+      if (!users || users.length === 0) {
+        console.log("No users found");
+        return [];
+      }
+
+      // Fetch tournament participants
+      const { data: participants, error: participantsError } = await supabase
+        .from("tournament_participants")
+        .select(
+          "user_id, tournament_id, matches_played, matches_won, total_points, burst_points, ringout_points, spinout_points"
+        );
+
+      if (participantsError) {
+        console.error("Error fetching participants:", participantsError);
+      }
+
+      // Fetch completed tournaments
+      const { data: tournaments, error: tournamentsError } = await supabase
+        .from("tournaments")
+        .select("id, winner_id")
+        .eq("status", "completed");
+
+      if (tournamentsError) {
+        console.error("Error fetching tournaments:", tournamentsError);
+      }
+
+      // Calculate stats for each user
+      const playerStats: PlayerStats[] = users
+        .map((user) => {
+          const userParticipants =
+            participants?.filter((p) => p.user_id === user.id) || [];
+          const userTournaments =
+            tournaments?.filter((t) => t.winner_id === user.id) || [];
+
+          const tournaments_played = new Set(
+            userParticipants.map((p) => p.tournament_id)
+          ).size;
+          const tournaments_won = userTournaments.length;
+          const total_matches = userParticipants.reduce(
+            (sum, p) => sum + (p.matches_played || 0),
+            0
+          );
+          const matches_won = userParticipants.reduce(
+            (sum, p) => sum + (p.matches_won || 0),
+            0
+          );
+          const total_points = userParticipants.reduce(
+            (sum, p) => sum + (p.total_points || 0),
+            0
+          );
+          const total_burst_points = userParticipants.reduce(
+            (sum, p) => sum + (p.burst_points || 0),
+            0
+          );
+          const total_ringout_points = userParticipants.reduce(
+            (sum, p) => sum + (p.ringout_points || 0),
+            0
+          );
+          const total_spinout_points = userParticipants.reduce(
+            (sum, p) => sum + (p.spinout_points || 0),
+            0
+          );
+
+          const win_percentage =
+            total_matches > 0
+              ? Math.round((matches_won / total_matches) * 100 * 100) / 100
+              : 0;
+
+          return {
+            id: user.id,
+            display_name: user.display_name,
+            tournaments_played,
+            tournaments_won,
+            total_matches,
+            matches_won,
+            total_points,
+            total_burst_points,
+            total_ringout_points,
+            total_spinout_points,
+            win_percentage,
+          };
+        })
+        .filter(
+          (stats) => stats.tournaments_played > 0 || stats.total_matches > 0
+        )
+        .sort(
+          (a, b) =>
+            b.tournaments_won - a.tournaments_won ||
+            b.total_points - a.total_points ||
+            b.win_percentage - a.win_percentage
+        );
+
+      console.log("Manually calculated player stats:", playerStats);
+      return playerStats;
+    } catch (error) {
+      console.error("Error in manual calculation:", error);
+      return [];
     }
   };
 

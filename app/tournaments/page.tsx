@@ -36,16 +36,72 @@ export default function TournamentsPage() {
 
   const fetchTournaments = async () => {
     try {
-      const { data, error } = await supabase
+      console.log("Fetching tournaments with creator and winner info...");
+
+      let tournamentsData: any[] = [];
+
+      // First, try the complex join approach
+      const { data: joinData, error: joinError } = await supabase
         .from("tournaments")
-        .select("*")
+        .select(
+          `
+          *,
+          created_by_user:users!tournaments_created_by_fkey(id, display_name),
+          winner:users!tournaments_winner_id_fkey(id, display_name)
+        `
+        )
         .order("created_at", { ascending: false });
 
-      if (error) throw error;
+      if (joinError) {
+        console.error(
+          "Complex join failed, trying simple approach:",
+          joinError
+        );
+
+        // Fallback: fetch basic tournament data first
+        const { data: basicData, error: basicError } = await supabase
+          .from("tournaments")
+          .select("*")
+          .order("created_at", { ascending: false });
+
+        if (basicError) {
+          console.error("Basic fetch failed:", basicError);
+          throw basicError;
+        }
+
+        // Then fetch user details separately
+        const userIds = new Set<string>();
+        basicData?.forEach((tournament: any) => {
+          if (tournament.created_by) userIds.add(tournament.created_by);
+          if (tournament.winner_id) userIds.add(tournament.winner_id);
+        });
+
+        const { data: users, error: usersError } = await supabase
+          .from("users")
+          .select("id, display_name")
+          .in("id", Array.from(userIds));
+
+        if (usersError) {
+          console.error("Users fetch failed:", usersError);
+        }
+
+        // Combine the data
+        tournamentsData = (basicData || []).map((tournament: any) => ({
+          ...tournament,
+          created_by_user: users?.find(
+            (u) => u.id === tournament.created_by
+          ) || { display_name: "Unknown" },
+          winner: users?.find((u) => u.id === tournament.winner_id) || null,
+        }));
+      } else {
+        tournamentsData = joinData || [];
+      }
+
+      console.log("Raw tournaments data:", tournamentsData);
 
       // Fetch participant counts for each tournament
       const tournamentsWithCounts = await Promise.all(
-        data.map(async (tournament) => {
+        tournamentsData.map(async (tournament: any) => {
           const { count: participantCount } = await supabase
             .from("tournament_participants")
             .select("*", { count: "exact", head: true })
@@ -54,12 +110,11 @@ export default function TournamentsPage() {
           return {
             ...tournament,
             participant_count: participantCount || 0,
-            created_by_user: { display_name: "Unknown" }, // Fallback
-            winner: null, // Fallback
           };
         })
       );
 
+      console.log("Tournaments with counts:", tournamentsWithCounts);
       setTournaments(tournamentsWithCounts);
     } catch (error) {
       console.error("Error fetching tournaments:", error);
