@@ -403,10 +403,26 @@ export default function StreamingControlPage() {
 
   // Extract YouTube video ID from URL
   const extractYouTubeId = useCallback((url: string) => {
-    const regExp =
-      /^.*(youtu.be\/|v\/|u\/\w\/|embed\/|watch\?v=|&v=)([^#&?]*).*/;
-    const match = url.match(regExp);
-    return match && match[2].length === 11 ? match[2] : null;
+    // Support multiple YouTube URL formats including live streams
+    const patterns = [
+      // Standard YouTube video: youtube.com/watch?v=VIDEO_ID
+      /^.*(?:youtube\.com\/watch\?v=|youtu\.be\/|youtube\.com\/embed\/)([^#&?]{11}).*/,
+      // YouTube live: youtube.com/live/VIDEO_ID
+      /^.*youtube\.com\/live\/([^#&?]{11}).*/,
+      // YouTube live with parameters: youtube.com/live/VIDEO_ID?feature=share
+      /^.*youtube\.com\/live\/([^#&?]{11})(?:\?.*)?.*/,
+      // Legacy formats
+      /^.*(?:v\/|u\/\w\/|&v=)([^#&?]{11}).*/
+    ];
+
+    for (const pattern of patterns) {
+      const match = url.match(pattern);
+      if (match && match[1] && match[1].length === 11) {
+        return match[1];
+      }
+    }
+    
+    return null;
   }, []);
 
   // Update tournament media settings
@@ -882,7 +898,7 @@ export default function StreamingControlPage() {
                       <Label>YouTube Video URL</Label>
                       <div className="flex gap-2">
                         <Input
-                          placeholder="https://www.youtube.com/watch?v=..."
+                          placeholder="https://www.youtube.com/live/vrGAKTtztUo or https://www.youtube.com/watch?v=..."
                           value={youtubeUrl}
                           onChange={(e) => setYoutubeUrl(e.target.value)}
                           className="flex-1"
@@ -941,7 +957,8 @@ export default function StreamingControlPage() {
                       )}
 
                       <p className="text-xs text-muted-foreground">
-                        Paste a YouTube URL to embed the video in the overlay
+                        Paste a YouTube URL to embed the video in the overlay. 
+                        Supports: youtube.com/watch?v=VIDEO_ID, youtube.com/live/VIDEO_ID, youtu.be/VIDEO_ID
                       </p>
                     </div>
                   )}
