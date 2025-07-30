@@ -463,7 +463,7 @@ export default function StreamingOverlayPage() {
               exit={{ y: -100, opacity: 0 }}
               className={`absolute top-0 left-0 right-0 ${
                 isWidgetMode
-                  ? "bg-gradient-to-r from-black/80 via-black/70 to-black/80 backdrop-blur-sm border-b border-white/20"
+                  ? "bg-black border-b border-white/20"
                   : "bg-gradient-to-r from-black/90 via-black/80 to-black/90 backdrop-blur-sm border-b border-white/20"
               }`}
             >
@@ -493,7 +493,13 @@ export default function StreamingOverlayPage() {
                   >
                     {/* Player 1 */}
                     <div className="text-center">
-                      <div className="bg-gradient-to-r from-blue-500/20 to-blue-600/20 rounded-lg px-6 py-3 border border-blue-400/30">
+                      <div
+                        className={`rounded-lg px-6 py-3 border ${
+                          isWidgetMode
+                            ? "bg-blue-600 border-blue-400"
+                            : "bg-gradient-to-r from-blue-500/20 to-blue-600/20 border-blue-400/30"
+                        }`}
+                      >
                         <h3 className="text-white font-bold text-lg mb-1">
                           {currentMatch.player1?.display_name || "Player 1"}
                         </h3>
@@ -531,7 +537,13 @@ export default function StreamingOverlayPage() {
 
                     {/* Player 2 */}
                     <div className="text-center">
-                      <div className="bg-gradient-to-r from-red-500/20 to-red-600/20 rounded-lg px-6 py-3 border border-red-400/30">
+                      <div
+                        className={`rounded-lg px-6 py-3 border ${
+                          isWidgetMode
+                            ? "bg-red-600 border-red-400"
+                            : "bg-gradient-to-r from-red-500/20 to-red-600/20 border-red-400/30"
+                        }`}
+                      >
                         <h3 className="text-white font-bold text-lg mb-1">
                           {currentMatch.player2?.display_name || "Player 2"}
                         </h3>
@@ -550,7 +562,11 @@ export default function StreamingOverlayPage() {
 
                 {/* Spectator Count & Connection Status */}
                 <div className="flex items-center gap-4">
-                  <div className="flex items-center gap-2 bg-black/50 px-3 py-2 rounded-lg">
+                  <div
+                    className={`flex items-center gap-2 px-3 py-2 rounded-lg ${
+                      isWidgetMode ? "bg-gray-800" : "bg-black/50"
+                    }`}
+                  >
                     <Users className="h-4 w-4 text-blue-400" />
                     <span className="font-bold text-white">
                       {spectatorCount}
@@ -604,7 +620,13 @@ export default function StreamingOverlayPage() {
         {/* No Active Match Message */}
         {!currentMatch && (
           <div className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 text-center">
-            <div className="bg-black/50 backdrop-blur-sm rounded-lg px-6 py-4 border border-white/20">
+            <div
+              className={`rounded-lg px-6 py-4 border ${
+                isWidgetMode
+                  ? "bg-black border-white/20"
+                  : "bg-black/50 backdrop-blur-sm border-white/20"
+              }`}
+            >
               <Target className="h-8 w-8 text-gray-400 mx-auto mb-2" />
               <p className="text-white text-lg font-medium">
                 Waiting for Match
@@ -624,7 +646,7 @@ export default function StreamingOverlayPage() {
             exit={{ y: 100, opacity: 0 }}
             className={`absolute bottom-0 left-0 right-0 ${
               isWidgetMode
-                ? "bg-gradient-to-t from-black/80 via-black/70 to-black/60 backdrop-blur-sm border-t border-white/20"
+                ? "bg-black border-t border-white/20"
                 : "bg-gradient-to-t from-black/95 via-black/90 to-black/80 backdrop-blur-sm border-t border-white/20"
             }`}
           >
@@ -649,7 +671,13 @@ export default function StreamingOverlayPage() {
                     >
                       <Minus className="h-4 w-4" />
                     </button>
-                    <div className="w-16 h-10 bg-blue-500/20 border border-blue-400/30 rounded-lg flex items-center justify-center">
+                    <div
+                      className={`w-16 h-10 border rounded-lg flex items-center justify-center ${
+                        isWidgetMode
+                          ? "bg-blue-600 border-blue-400"
+                          : "bg-blue-500/20 border-blue-400/30"
+                      }`}
+                    >
                       <span className="text-2xl font-bold text-white">
                         {currentMatch.player1_score}
                       </span>
@@ -697,7 +725,13 @@ export default function StreamingOverlayPage() {
                     >
                       <Minus className="h-4 w-4" />
                     </button>
-                    <div className="w-16 h-10 bg-red-500/20 border border-red-400/30 rounded-lg flex items-center justify-center">
+                    <div
+                      className={`w-16 h-10 border rounded-lg flex items-center justify-center ${
+                        isWidgetMode
+                          ? "bg-red-600 border-red-400"
+                          : "bg-red-500/20 border-red-400/30"
+                      }`}
+                    >
                       <span className="text-2xl font-bold text-white">
                         {currentMatch.player2_score}
                       </span>
