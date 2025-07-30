@@ -4,6 +4,7 @@ import "./globals.css";
 import { AuthProvider } from "@/lib/hooks/useAuth";
 import { ThemeProvider } from "@/lib/theme-provider";
 import { PWAInstaller } from "@/components/pwa-installer";
+import { AppPerformanceProvider } from "@/components/app-performance-provider";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -71,8 +72,19 @@ export default function RootLayout({
       >
         <ThemeProvider>
           <AuthProvider>
-            {children}
-            <PWAInstaller />
+            <AppPerformanceProvider
+              config={{
+                enableResourceMonitoring: true,
+                enableBackgroundThrottling: true,
+                enableMemoryOptimization: true,
+                enableNetworkOptimization: true,
+                maxConcurrentRequests: 5,
+                requestTimeout: 10000,
+              }}
+            >
+              {children}
+              <PWAInstaller />
+            </AppPerformanceProvider>
           </AuthProvider>
         </ThemeProvider>
       </body>
