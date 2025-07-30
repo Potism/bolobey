@@ -1,15 +1,16 @@
 "use client";
 
 import { useState, useEffect, useCallback, useMemo, useRef } from "react";
-import { useParams } from "next/navigation";
+import { useParams, useSearchParams } from "next/navigation";
 import { supabase } from "@/lib/supabase";
 import { motion, AnimatePresence } from "framer-motion";
-import { Trophy, Users, Target, Zap, Camera } from "lucide-react";
+import { Trophy, Users, Target, Zap, Camera, Plus, Minus } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { useTournament } from "@/lib/contexts/TournamentContext";
 
 export default function StreamingOverlayPage() {
   const params = useParams();
+  const searchParams = useSearchParams();
   const tournamentId = params.tournamentId as string;
 
   // Use Context API for tournament data
@@ -30,6 +31,26 @@ export default function StreamingOverlayPage() {
   const tabId = useMemo(() => {
     return `overlay_${Math.random().toString(36).substr(2, 9)}_${Date.now()}`;
   }, []);
+
+  // Check if widget mode is enabled via URL parameter
+  const isWidgetMode = searchParams.get("mode") === "widget";
+
+  // Update match score function for point changer
+  const updateMatchScore = useCallback(
+    async (matchId: string, player1Score: number, player2Score: number) => {
+      try {
+        console.log(
+          `[${tabId}] Updating match ${matchId}: ${player1Score} - ${player2Score}`
+        );
+
+        await actions.updateMatchScore(matchId, player1Score, player2Score);
+        console.log(`[${tabId}] Score updated successfully`);
+      } catch (error) {
+        console.error(`[${tabId}] Error updating match score:`, error);
+      }
+    },
+    [actions, tabId]
+  );
 
   // Webcam functionality for overlay
   const startWebcam = useCallback(async () => {
@@ -307,7 +328,11 @@ export default function StreamingOverlayPage() {
   // Loading state
   if (isLoading) {
     return (
-      <div className="min-h-screen bg-black flex items-center justify-center">
+      <div
+        className={`${
+          isWidgetMode ? "bg-transparent" : "min-h-screen bg-black"
+        } flex items-center justify-center`}
+      >
         <div className="text-center">
           <div className="animate-spin rounded-full h-32 w-32 border-b-2 border-white mx-auto mb-4"></div>
           <h2 className="text-white text-2xl font-bold mb-2">
@@ -322,7 +347,11 @@ export default function StreamingOverlayPage() {
   // Error state
   if (!tournament) {
     return (
-      <div className="min-h-screen bg-black flex items-center justify-center">
+      <div
+        className={`${
+          isWidgetMode ? "bg-transparent" : "min-h-screen bg-black"
+        } flex items-center justify-center`}
+      >
         <div className="text-center">
           <h2 className="text-white text-2xl font-bold mb-2">
             Tournament Not Found
@@ -337,9 +366,13 @@ export default function StreamingOverlayPage() {
   }
 
   return (
-    <div className="min-h-screen bg-black relative overflow-hidden">
-      {/* YouTube Stream Background */}
-      {embedUrl && mediaSource === "youtube" && (
+    <div
+      className={`${
+        isWidgetMode ? "bg-transparent" : "min-h-screen bg-black"
+      } relative overflow-hidden`}
+    >
+      {/* YouTube Stream Background - Only show in full mode */}
+      {!isWidgetMode && embedUrl && mediaSource === "youtube" && (
         <div className="absolute inset-0 z-0">
           <iframe
             src={embedUrl}
@@ -354,8 +387,8 @@ export default function StreamingOverlayPage() {
         </div>
       )}
 
-      {/* Webcam Background */}
-      {mediaSource === "webcam" && (
+      {/* Webcam Background - Only show in full mode */}
+      {!isWidgetMode && mediaSource === "webcam" && (
         <div className="absolute inset-0 z-0">
           {webcamStream ? (
             <video
@@ -428,7 +461,11 @@ export default function StreamingOverlayPage() {
               initial={{ y: -100, opacity: 0 }}
               animate={{ y: 0, opacity: 1 }}
               exit={{ y: -100, opacity: 0 }}
-              className="absolute top-0 left-0 right-0 bg-gradient-to-r from-black/90 via-black/80 to-black/90 backdrop-blur-sm border-b border-white/20"
+              className={`absolute top-0 left-0 right-0 ${
+                isWidgetMode
+                  ? "bg-gradient-to-r from-black/80 via-black/70 to-black/80 backdrop-blur-sm border-b border-white/20"
+                  : "bg-gradient-to-r from-black/90 via-black/80 to-black/90 backdrop-blur-sm border-b border-white/20"
+              }`}
             >
               <div className="flex items-center justify-between p-4">
                 {/* Tournament Info */}
@@ -577,6 +614,112 @@ export default function StreamingOverlayPage() {
               </p>
             </div>
           </div>
+        )}
+
+        {/* Point Changer - Positioned at the very bottom */}
+        {currentMatch && (
+          <motion.div
+            initial={{ y: 100, opacity: 0 }}
+            animate={{ y: 0, opacity: 1 }}
+            exit={{ y: 100, opacity: 0 }}
+            className={`absolute bottom-0 left-0 right-0 ${
+              isWidgetMode
+                ? "bg-gradient-to-t from-black/80 via-black/70 to-black/60 backdrop-blur-sm border-t border-white/20"
+                : "bg-gradient-to-t from-black/95 via-black/90 to-black/80 backdrop-blur-sm border-t border-white/20"
+            }`}
+          >
+            <div className="flex items-center justify-center gap-8 p-4">
+              {/* Player 1 Point Controls */}
+              <div className="flex items-center gap-4">
+                <div className="text-center">
+                  <div className="text-white font-bold text-lg mb-2">
+                    {currentMatch.player1?.display_name || "Player 1"}
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <button
+                      onClick={() =>
+                        updateMatchScore(
+                          currentMatch.id,
+                          Math.max(0, currentMatch.player1_score - 1),
+                          currentMatch.player2_score
+                        )
+                      }
+                      className="w-10 h-10 bg-red-500/20 hover:bg-red-500/30 border border-red-400/30 rounded-lg flex items-center justify-center text-white transition-all duration-200 hover:scale-105"
+                      title="Decrease Player 1 Score"
+                    >
+                      <Minus className="h-4 w-4" />
+                    </button>
+                    <div className="w-16 h-10 bg-blue-500/20 border border-blue-400/30 rounded-lg flex items-center justify-center">
+                      <span className="text-2xl font-bold text-white">
+                        {currentMatch.player1_score}
+                      </span>
+                    </div>
+                    <button
+                      onClick={() =>
+                        updateMatchScore(
+                          currentMatch.id,
+                          currentMatch.player1_score + 1,
+                          currentMatch.player2_score
+                        )
+                      }
+                      className="w-10 h-10 bg-green-500/20 hover:bg-green-500/30 border border-green-400/30 rounded-lg flex items-center justify-center text-white transition-all duration-200 hover:scale-105"
+                      title="Increase Player 1 Score"
+                    >
+                      <Plus className="h-4 w-4" />
+                    </button>
+                  </div>
+                </div>
+              </div>
+
+              {/* VS Divider */}
+              <div className="text-center">
+                <div className="text-white font-bold text-xl mb-2">VS</div>
+                <div className="w-8 h-1 bg-white/50 rounded-full"></div>
+              </div>
+
+              {/* Player 2 Point Controls */}
+              <div className="flex items-center gap-4">
+                <div className="text-center">
+                  <div className="text-white font-bold text-lg mb-2">
+                    {currentMatch.player2?.display_name || "Player 2"}
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <button
+                      onClick={() =>
+                        updateMatchScore(
+                          currentMatch.id,
+                          currentMatch.player1_score,
+                          Math.max(0, currentMatch.player2_score - 1)
+                        )
+                      }
+                      className="w-10 h-10 bg-red-500/20 hover:bg-red-500/30 border border-red-400/30 rounded-lg flex items-center justify-center text-white transition-all duration-200 hover:scale-105"
+                      title="Decrease Player 2 Score"
+                    >
+                      <Minus className="h-4 w-4" />
+                    </button>
+                    <div className="w-16 h-10 bg-red-500/20 border border-red-400/30 rounded-lg flex items-center justify-center">
+                      <span className="text-2xl font-bold text-white">
+                        {currentMatch.player2_score}
+                      </span>
+                    </div>
+                    <button
+                      onClick={() =>
+                        updateMatchScore(
+                          currentMatch.id,
+                          currentMatch.player1_score,
+                          currentMatch.player2_score + 1
+                        )
+                      }
+                      className="w-10 h-10 bg-green-500/20 hover:bg-green-500/30 border border-green-400/30 rounded-lg flex items-center justify-center text-white transition-all duration-200 hover:scale-105"
+                      title="Increase Player 2 Score"
+                    >
+                      <Plus className="h-4 w-4" />
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </motion.div>
         )}
       </div>
     </div>
